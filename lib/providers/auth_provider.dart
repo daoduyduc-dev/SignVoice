@@ -1,20 +1,38 @@
 import 'package:flutter/foundation.dart';
+
 import '../models/user_model.dart';
 import '../services/auth/auth_service.dart';
 import '../services/api/api_exception.dart';
 
 /// Authentication state
-enum AuthState {
-  initial,
-  loading,
-  authenticated,
-  unauthenticated,
-  error,
-}
+enum AuthState { initial, loading, authenticated, unauthenticated, error }
 
 /// Authentication provider for state management
 class AuthProvider extends ChangeNotifier {
-  final AuthService _authService = AuthService.instance;
+  final AuthService _authService;
+
+  AuthProvider({AuthService? authService})
+    : _authService = authService ?? AuthService.instance {
+    _authService.sessionInvalidated.addListener(_sessionExpired);
+  }
+
+  void _sessionExpired() {
+    _user = null;
+    _state = AuthState.unauthenticated;
+    _errorMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
+    notifyListeners();
+  }
+
+  bool get isAdmin => isAuthenticated && _user!.isAdmin;
+  bool get isStaff => isAuthenticated && _user!.isStaff;
+  bool can(String permission) =>
+      isAuthenticated && _user!.hasPermission(permission);
+
+  @override
+  void dispose() {
+    _authService.sessionInvalidated.removeListener(_sessionExpired);
+    super.dispose();
+  }
 
   AuthState _state = AuthState.initial;
   UserModel? _user;
@@ -23,23 +41,21 @@ class AuthProvider extends ChangeNotifier {
   AuthState get state => _state;
   UserModel? get user => _user;
   String? get errorMessage => _errorMessage;
-  bool get isAuthenticated => _state == AuthState.authenticated && _user != null;
+  bool get isAuthenticated =>
+      _state == AuthState.authenticated && _user != null;
   bool get isLoading => _state == AuthState.loading;
 
   /// Initialize - check if user is already authenticated
   Future<void> initialize() async {
     try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        _state = AuthState.loading;
-        notifyListeners();
-
-        _user = await _authService.getCurrentUser();
-        _state = AuthState.authenticated;
-      } else {
-        _state = AuthState.unauthenticated;
-      }
+      _state = AuthState.loading;
+      notifyListeners();
+      _user = await _authService.restoreSession();
+      _state = _user == null
+          ? AuthState.unauthenticated
+          : AuthState.authenticated;
     } catch (e) {
+      _user = null;
       _state = AuthState.unauthenticated;
       _errorMessage = 'Failed to restore session';
     }
@@ -85,19 +101,13 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Login with email and password
-  Future<bool> login({
-    required String email,
-    required String password,
-  }) async {
+  Future<bool> login({required String email, required String password}) async {
     try {
       _state = AuthState.loading;
       _errorMessage = null;
       notifyListeners();
 
-      _user = await _authService.login(
-        email: email,
-        password: password,
-      );
+      _user = await _authService.login(email: email, password: password);
 
       _state = AuthState.authenticated;
       notifyListeners();
@@ -149,6 +159,7 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> convertGuest({
     required String email,
     required String password,
+    required String displayName,
   }) async {
     try {
       _state = AuthState.loading;
@@ -158,6 +169,7 @@ class AuthProvider extends ChangeNotifier {
       _user = await _authService.convertGuest(
         email: email,
         password: password,
+        displayName: displayName,
       );
 
       _state = AuthState.authenticated;
@@ -198,6 +210,8 @@ class AuthProvider extends ChangeNotifier {
         _user = await _authService.getCurrentUser();
         notifyListeners();
       }
+    } on UnauthorizedException {
+      _sessionExpired();
     } catch (e) {
       debugPrint('Failed to refresh user: $e');
     }

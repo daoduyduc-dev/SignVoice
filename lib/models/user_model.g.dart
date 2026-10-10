@@ -13,6 +13,13 @@ UserModel _$UserModelFromJson(Map<String, dynamic> json) => UserModel(
   avatarUrl: json['avatarUrl'] as String?,
   accountType: $enumDecode(_$AccountTypeEnumMap, json['accountType']),
   role: $enumDecode(_$UserRoleEnumMap, json['role']),
+  customRoleId: json['customRoleId'] as String?,
+  customRoleName: json['customRoleName'] as String?,
+  permissions:
+      (json['permissions'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ??
+      [],
   status: $enumDecode(_$AccountStatusEnumMap, json['status']),
   isGuest: json['isGuest'] as bool,
   guestConvertedAt: json['guestConvertedAt'] == null
@@ -33,6 +40,9 @@ Map<String, dynamic> _$UserModelToJson(UserModel instance) => <String, dynamic>{
   'avatarUrl': instance.avatarUrl,
   'accountType': _$AccountTypeEnumMap[instance.accountType]!,
   'role': _$UserRoleEnumMap[instance.role]!,
+  'customRoleId': instance.customRoleId,
+  'customRoleName': instance.customRoleName,
+  'permissions': instance.permissions,
   'status': _$AccountStatusEnumMap[instance.status]!,
   'isGuest': instance.isGuest,
   'guestConvertedAt': instance.guestConvertedAt?.toIso8601String(),

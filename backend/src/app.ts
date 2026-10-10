@@ -2,6 +2,8 @@ import express, { Application } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import path from 'path';
+import { existsSync } from 'fs';
 import { env } from './config/env';
 import { errorHandler, notFoundHandler } from './common/middlewares/errorHandler';
 import { requestLogger, addRequestId } from './common/middlewares/requestLogger';
@@ -20,8 +22,15 @@ export async function createApp(): Promise<Application> {
       directives: {
         defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"], // Required for Swagger UI
-        scriptSrc: ["'self'", "'unsafe-inline'"], // Required for Swagger UI
+        scriptSrc: ["'self'", "'unsafe-inline'", ...(env.SERVE_WEB ? ["'wasm-unsafe-eval'"] : [])],
         imgSrc: ["'self'", "data:", "https:"], // Required for Swagger UI
+        ...(env.SERVE_WEB ? {
+          workerSrc: ["'self'", 'blob:'],
+          fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+          connectSrc: ["'self'", 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'],
+          styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        } : {}),
+        upgradeInsecureRequests: env.isProduction ? [] : null,
       },
     },
   }));
@@ -106,6 +115,24 @@ export async function createApp(): Promise<Application> {
   app.use('/api/v1/users', (await import('./routes/user.routes')).default);
   app.use('/api/v1/staff', (await import('./routes/staff.routes')).default);
   app.use('/api/v1/admin', (await import('./routes/admin.routes')).default);
+
+  // Share one origin for Flutter and API so JWT cookies also work over a tunnel.
+  if (env.SERVE_WEB) {
+    const webRoot = env.WEB_BUILD_DIR
+      ? path.resolve(env.WEB_BUILD_DIR)
+      : path.resolve(__dirname, '../../build/web');
+    if (!existsSync(path.join(webRoot, 'index.html'))) {
+      throw new Error('Flutter web build is missing. Run flutter build web first.');
+    }
+    app.use(express.static(webRoot, {
+      setHeaders: (res, filePath) => {
+        if (/\.(html|js|json)$/.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
+      },
+    }));
+    app.get(/^\/(?!api(?:\/|$)|health(?:\/|$)|api-docs(?:\/|$))[^.]*$/, (_req, res) => {
+      res.sendFile(path.join(webRoot, 'index.html'));
+    });
+  }
 
   // 404 handler
   app.use(notFoundHandler);

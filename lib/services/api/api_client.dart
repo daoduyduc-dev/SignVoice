@@ -1,28 +1,41 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
 import 'api_config.dart';
 import 'api_exception.dart';
 import '../storage/secure_token_storage.dart';
+import '../storage/token_store.dart';
+import 'http_client_factory.dart';
 
 /// HTTP client with authentication and error handling
 class ApiClient {
   static ApiClient? _instance;
   final http.Client _client;
-  final SecureTokenStorage _tokenStorage;
+  final TokenStore _tokenStorage;
+  final bool useRefreshCookie;
+  final ValueNotifier<int> sessionInvalidated = ValueNotifier(0);
+  Future<void>? _refreshing;
+  bool _loggingOut = false;
 
-  ApiClient._()
-      : _client = http.Client(),
-        _tokenStorage = SecureTokenStorage.instance;
+  ApiClient({
+    http.Client? client,
+    TokenStore? tokenStorage,
+    this.useRefreshCookie = kIsWeb,
+  }) : _client = client ?? createHttpClient(),
+       _tokenStorage = tokenStorage ?? SecureTokenStorage.instance;
 
   static ApiClient get instance {
-    _instance ??= ApiClient._();
+    _instance ??= ApiClient();
     return _instance!;
   }
 
   /// Build full URL
   String _buildUrl(String endpoint) {
-    return '${ApiConfig.baseUrl}$endpoint';
+    final url = '${ApiConfig.baseUrl}$endpoint';
+    return kIsWeb ? Uri.base.resolve(url).toString() : url;
   }
 
   /// Get headers with optional authentication
@@ -79,7 +92,9 @@ class ApiClient {
     // Throw appropriate exception
     switch (statusCode) {
       case 401:
-        if (code == 'TOKEN_EXPIRED' || code == 'AUTH_TOKEN_EXPIRED') {
+        if (code == 'TOKEN_EXPIRED' ||
+            code == 'AUTH_TOKEN_EXPIRED' ||
+            code == 'AUTH_SESSION_INVALID') {
           throw TokenExpiredException(message: message);
         }
         throw UnauthorizedException(message: message);
@@ -103,173 +118,168 @@ class ApiClient {
     }
   }
 
-  /// Handle network errors
-  Never _handleError(dynamic error) {
-    if (error is SocketException) {
-      throw NetworkException(message: 'No internet connection');
-    } else if (error is HttpException) {
-      throw NetworkException(message: 'Network error: ${error.message}');
-    } else if (error is FormatException) {
-      throw ApiException(message: 'Invalid response format');
-    } else if (error is ApiException) {
-      throw error;
-    } else {
-      throw ApiException(message: 'Unexpected error: $error');
-    }
-  }
-
-  /// Refresh access token
-  Future<void> refreshToken() async {
-    try {
-      final refreshToken = await _tokenStorage.getRefreshToken();
-      if (refreshToken == null) {
-        throw UnauthorizedException(message: 'No refresh token available');
-      }
-
-      final response = await _client.post(
-        Uri.parse(_buildUrl('${ApiConfig.authEndpoint}/refresh')),
-        headers: await _getHeaders(includeAuth: false),
-        body: jsonEncode({'refreshToken': refreshToken}),
+  Never _handleError(Object error) {
+    if (error is ApiException) throw error;
+    if (error is http.ClientException || error is TimeoutException) {
+      throw NetworkException(
+        message: 'Không thể kết nối máy chủ. Vui lòng thử lại.',
       );
+    }
+    throw ApiException(message: 'Phản hồi máy chủ không hợp lệ.');
+  }
 
-      final data = _handleResponse(response);
-      if (data != null &&
-          data['success'] == true &&
-          data['data'] != null &&
-          data['data']['accessToken'] != null) {
-        await _tokenStorage.saveAccessToken(data['data']['accessToken']);
-      } else {
-        throw UnauthorizedException(message: 'Failed to refresh token');
-      }
-    } catch (e) {
-      _handleError(e);
+  Future<void> _invalidateSession() async {
+    await _tokenStorage.clearAll();
+    sessionInvalidated.value++;
+  }
+
+  /// Concurrent requests share one refresh operation; both tokens are rotated.
+  Future<void> refreshToken({bool duringLogout = false}) async {
+    if (_loggingOut && !duringLogout) {
+      throw UnauthorizedException(message: 'Vui lòng đăng nhập lại.');
+    }
+    final pending = _refreshing;
+    if (pending != null) return pending;
+    final operation = _performRefresh();
+    _refreshing = operation;
+    try {
+      await operation;
+    } finally {
+      _refreshing = null;
     }
   }
 
-  /// GET request
+  void sessionStarted() => _loggingOut = false;
+
+  /// Finish any token rotation before revoking the current device session.
+  Future<void> logout({bool allDevices = false}) async {
+    _loggingOut = true;
+    try {
+      final pending = _refreshing;
+      if (pending != null) {
+        try {
+          await pending;
+        } on ApiException {
+          // The server may already have revoked the session.
+        }
+      }
+      await post(
+        '${ApiConfig.authEndpoint}/${allDevices ? 'logout-all' : 'logout'}',
+      );
+    } finally {
+      await _invalidateSession();
+    }
+  }
+
+  Future<void> _performRefresh() async {
+    try {
+      final refresh = await _tokenStorage.getRefreshToken();
+      if (!useRefreshCookie && refresh == null) {
+        throw UnauthorizedException(message: 'Vui lòng đăng nhập lại.');
+      }
+      final response = await _client
+          .post(
+            Uri.parse(_buildUrl('${ApiConfig.authEndpoint}/refresh')),
+            headers: await _getHeaders(includeAuth: false),
+            body: jsonEncode(refresh == null ? {} : {'refreshToken': refresh}),
+          )
+          .timeout(ApiConfig.receiveTimeout);
+      final data = _handleResponse(response);
+      final tokens = data?['data'];
+      if (data?['success'] != true ||
+          tokens?['accessToken'] is! String ||
+          tokens?['refreshToken'] is! String) {
+        throw UnauthorizedException(message: 'Vui lòng đăng nhập lại.');
+      }
+      await _tokenStorage.saveTokens(
+        accessToken: tokens['accessToken'],
+        refreshToken: tokens['refreshToken'],
+      );
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        await _invalidateSession();
+      }
+      rethrow;
+    } catch (error) {
+      _handleError(error);
+    }
+  }
+
+  Future<dynamic> _request(
+    String method,
+    String endpoint, {
+    Map<String, String>? queryParameters,
+    dynamic body,
+    bool requiresAuth = true,
+  }) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final headers = await _getHeaders(includeAuth: requiresAuth);
+      try {
+        final uri = Uri.parse(_buildUrl(endpoint))
+            .replace(queryParameters: queryParameters);
+        final request = http.Request(method, uri)..headers.addAll(headers);
+        if (body != null) request.body = jsonEncode(body);
+        final response = await _client
+            .send(request)
+            .then(http.Response.fromStream)
+            .timeout(ApiConfig.receiveTimeout);
+        return _handleResponse(response);
+      } on TokenExpiredException {
+        if (!requiresAuth || attempt > 0) {
+          if (requiresAuth) await _invalidateSession();
+          throw UnauthorizedException(message: 'Phiên đăng nhập đã hết hạn.');
+        }
+        // Another request may already have rotated the access token.
+        final current = await _tokenStorage.getAccessToken();
+        if (headers['Authorization'] ==
+            (current == null ? null : 'Bearer $current')) {
+          await refreshToken(
+            duringLogout:
+                _loggingOut &&
+                (endpoint == '${ApiConfig.authEndpoint}/logout' ||
+                    endpoint == '${ApiConfig.authEndpoint}/logout-all'),
+          );
+        }
+      } on UnauthorizedException {
+        if (requiresAuth) await _invalidateSession();
+        rethrow;
+      } catch (error) {
+        _handleError(error);
+      }
+    }
+    throw UnauthorizedException(message: 'Vui lòng đăng nhập lại.');
+  }
+
   Future<dynamic> get(
     String endpoint, {
     Map<String, String>? queryParameters,
     bool requiresAuth = true,
-  }) async {
-    try {
-      final uri = Uri.parse(_buildUrl(endpoint))
-          .replace(queryParameters: queryParameters);
-
-      final response = await _client
-          .get(
-            uri,
-            headers: await _getHeaders(includeAuth: requiresAuth),
-          )
-          .timeout(ApiConfig.receiveTimeout);
-
-      return _handleResponse(response);
-    } on TokenExpiredException {
-      // Try to refresh token and retry
-      await refreshToken();
-      return get(endpoint,
-          queryParameters: queryParameters, requiresAuth: requiresAuth);
-    } catch (e) {
-      return _handleError(e);
-    }
-  }
-
-  /// POST request
+  }) => _request(
+    'GET',
+    endpoint,
+    queryParameters: queryParameters,
+    requiresAuth: requiresAuth,
+  );
   Future<dynamic> post(
     String endpoint, {
     dynamic body,
     bool requiresAuth = true,
-  }) async {
-    try {
-      final response = await _client
-          .post(
-            Uri.parse(_buildUrl(endpoint)),
-            headers: await _getHeaders(includeAuth: requiresAuth),
-            body: body != null ? jsonEncode(body) : null,
-          )
-          .timeout(ApiConfig.receiveTimeout);
-
-      return _handleResponse(response);
-    } on TokenExpiredException {
-      await refreshToken();
-      return post(endpoint, body: body, requiresAuth: requiresAuth);
-    } catch (e) {
-      return _handleError(e);
-    }
-  }
-
-  /// PUT request
+  }) => _request('POST', endpoint, body: body, requiresAuth: requiresAuth);
   Future<dynamic> put(
     String endpoint, {
     dynamic body,
     bool requiresAuth = true,
-  }) async {
-    try {
-      final response = await _client
-          .put(
-            Uri.parse(_buildUrl(endpoint)),
-            headers: await _getHeaders(includeAuth: requiresAuth),
-            body: body != null ? jsonEncode(body) : null,
-          )
-          .timeout(ApiConfig.receiveTimeout);
-
-      return _handleResponse(response);
-    } on TokenExpiredException {
-      await refreshToken();
-      return put(endpoint, body: body, requiresAuth: requiresAuth);
-    } catch (e) {
-      return _handleError(e);
-    }
-  }
-
-  /// PATCH request
+  }) => _request('PUT', endpoint, body: body, requiresAuth: requiresAuth);
   Future<dynamic> patch(
     String endpoint, {
     dynamic body,
     bool requiresAuth = true,
-  }) async {
-    try {
-      final response = await _client
-          .patch(
-            Uri.parse(_buildUrl(endpoint)),
-            headers: await _getHeaders(includeAuth: requiresAuth),
-            body: body != null ? jsonEncode(body) : null,
-          )
-          .timeout(ApiConfig.receiveTimeout);
+  }) => _request('PATCH', endpoint, body: body, requiresAuth: requiresAuth);
+  Future<dynamic> delete(String endpoint, {bool requiresAuth = true}) =>
+      _request('DELETE', endpoint, requiresAuth: requiresAuth);
 
-      return _handleResponse(response);
-    } on TokenExpiredException {
-      await refreshToken();
-      return patch(endpoint, body: body, requiresAuth: requiresAuth);
-    } catch (e) {
-      return _handleError(e);
-    }
-  }
-
-  /// DELETE request
-  Future<dynamic> delete(
-    String endpoint, {
-    bool requiresAuth = true,
-  }) async {
-    try {
-      final response = await _client
-          .delete(
-            Uri.parse(_buildUrl(endpoint)),
-            headers: await _getHeaders(includeAuth: requiresAuth),
-          )
-          .timeout(ApiConfig.receiveTimeout);
-
-      return _handleResponse(response);
-    } on TokenExpiredException {
-      await refreshToken();
-      return delete(endpoint, requiresAuth: requiresAuth);
-    } catch (e) {
-      return _handleError(e);
-    }
-  }
-
-  /// Close the client
   void dispose() {
     _client.close();
+    sessionInvalidated.dispose();
   }
 }

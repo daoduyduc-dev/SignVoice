@@ -2,19 +2,55 @@ import '../api/api_client.dart';
 import '../api/api_config.dart';
 import '../storage/secure_token_storage.dart';
 import '../../models/user_model.dart';
+import '../storage/token_store.dart';
+import '../api/api_exception.dart';
+
+import 'package:flutter/foundation.dart';
 
 /// Authentication service
 class AuthService {
   static AuthService? _instance;
   final ApiClient _apiClient;
-  final SecureTokenStorage _tokenStorage;
+  final TokenStore _tokenStorage;
 
-  AuthService._()
-      : _apiClient = ApiClient.instance,
-        _tokenStorage = SecureTokenStorage.instance;
+  AuthService({ApiClient? apiClient, TokenStore? tokenStorage})
+    : _apiClient = apiClient ?? ApiClient.instance,
+      _tokenStorage = tokenStorage ?? SecureTokenStorage.instance;
+
+  ValueListenable<int> get sessionInvalidated => _apiClient.sessionInvalidated;
+
+  Future<UserModel?> restoreSession() async {
+    if (!await _tokenStorage.isAuthenticated()) {
+      // Metadata permits attempting cookie refresh; authorization comes from /me.
+      // Its absence also records an intentional logout, including while offline.
+      if (_apiClient.useRefreshCookie &&
+          await _tokenStorage.getUserRole() == null) {
+        return null;
+      }
+      if (!_apiClient.useRefreshCookie &&
+          await _tokenStorage.getRefreshToken() == null) {
+        return null;
+      }
+      await _apiClient.refreshToken();
+    }
+    return getCurrentUser();
+  }
+
+  Future<UserModel> _saveAuthResponse(dynamic response) async {
+    final data = response['data'];
+    final user = UserModel.fromJson(Map<String, dynamic>.from(data['user']));
+    final tokens = data['tokens'];
+    await _tokenStorage.saveTokens(
+      accessToken: tokens['accessToken'],
+      refreshToken: tokens['refreshToken'],
+    );
+    await _tokenStorage.saveUserInfo(userId: user.id, role: user.roleName);
+    _apiClient.sessionStarted();
+    return user;
+  }
 
   static AuthService get instance {
-    _instance ??= AuthService._();
+    _instance ??= AuthService();
     return _instance!;
   }
 
@@ -26,31 +62,12 @@ class AuthService {
   }) async {
     final response = await _apiClient.post(
       '${ApiConfig.authEndpoint}/register',
-      body: {
-        'email': email,
-        'password': password,
-        'displayName': displayName,
-      },
+      body: {'email': email, 'password': password, 'displayName': displayName},
       requiresAuth: false,
     );
 
     if (response['success'] == true && response['data'] != null) {
-      final data = response['data'];
-      
-      // Save tokens
-      await _tokenStorage.saveTokens(
-        accessToken: data['accessToken'],
-        refreshToken: data['refreshToken'],
-      );
-
-      // Save user info
-      final user = UserModel.fromJson(data['user']);
-      await _tokenStorage.saveUserInfo(
-        userId: user.id,
-        role: user.roleName,
-      );
-
-      return user;
+      return _saveAuthResponse(response);
     }
 
     throw Exception('Registration failed');
@@ -63,33 +80,37 @@ class AuthService {
   }) async {
     final response = await _apiClient.post(
       '${ApiConfig.authEndpoint}/login',
-      body: {
-        'email': email,
-        'password': password,
-      },
+      body: {'email': email, 'password': password},
       requiresAuth: false,
     );
 
     if (response['success'] == true && response['data'] != null) {
-      final data = response['data'];
-      
-      // Save tokens
-      await _tokenStorage.saveTokens(
-        accessToken: data['accessToken'],
-        refreshToken: data['refreshToken'],
-      );
-
-      // Save user info
-      final user = UserModel.fromJson(data['user']);
-      await _tokenStorage.saveUserInfo(
-        userId: user.id,
-        role: user.roleName,
-      );
-
-      return user;
+      return _saveAuthResponse(response);
     }
 
     throw Exception('Login failed');
+  }
+
+  /// Login as guest
+  Future<void> requestPasswordReset(String email) async {
+    await _apiClient.post(
+      '${ApiConfig.authEndpoint}/forgot-password',
+      body: {'email': email.trim()},
+      requiresAuth: false,
+    );
+  }
+
+  Future<void> resetPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    await _apiClient.post(
+      '${ApiConfig.authEndpoint}/reset-password',
+      body: {'token': token, 'newPassword': newPassword},
+      requiresAuth: false,
+    );
+    await _tokenStorage.clearAll();
+    _apiClient.sessionInvalidated.value++;
   }
 
   /// Login as guest
@@ -100,22 +121,7 @@ class AuthService {
     );
 
     if (response['success'] == true && response['data'] != null) {
-      final data = response['data'];
-      
-      // Save tokens
-      await _tokenStorage.saveTokens(
-        accessToken: data['accessToken'],
-        refreshToken: data['refreshToken'],
-      );
-
-      // Save user info
-      final user = UserModel.fromJson(data['user']);
-      await _tokenStorage.saveUserInfo(
-        userId: user.id,
-        role: user.roleName,
-      );
-
-      return user;
+      return _saveAuthResponse(response);
     }
 
     throw Exception('Guest login failed');
@@ -125,35 +131,16 @@ class AuthService {
   Future<UserModel> convertGuest({
     required String email,
     required String password,
+    required String displayName,
   }) async {
     final response = await _apiClient.post(
       '${ApiConfig.authEndpoint}/convert-guest',
-      body: {
-        'email': email,
-        'password': password,
-      },
+      body: {'email': email, 'password': password, 'displayName': displayName},
       requiresAuth: true,
     );
 
     if (response['success'] == true && response['data'] != null) {
-      final data = response['data'];
-      
-      // Update tokens if provided
-      if (data['accessToken'] != null && data['refreshToken'] != null) {
-        await _tokenStorage.saveTokens(
-          accessToken: data['accessToken'],
-          refreshToken: data['refreshToken'],
-        );
-      }
-
-      // Update user info
-      final user = UserModel.fromJson(data['user']);
-      await _tokenStorage.saveUserInfo(
-        userId: user.id,
-        role: user.roleName,
-      );
-
-      return user;
+      return _saveAuthResponse(response);
     }
 
     throw Exception('Guest conversion failed');
@@ -176,10 +163,7 @@ class AuthService {
   /// Logout
   Future<void> logout() async {
     try {
-      await _apiClient.post(
-        '${ApiConfig.authEndpoint}/logout',
-        requiresAuth: true,
-      );
+      await _apiClient.logout();
     } finally {
       // Clear tokens even if request fails
       await _tokenStorage.clearAll();
@@ -189,10 +173,7 @@ class AuthService {
   /// Logout from all devices
   Future<void> logoutAll() async {
     try {
-      await _apiClient.post(
-        '${ApiConfig.authEndpoint}/logout-all',
-        requiresAuth: true,
-      );
+      await _apiClient.logout(allDevices: true);
     } finally {
       await _tokenStorage.clearAll();
     }
@@ -215,8 +196,11 @@ class AuthService {
 
   /// Check if user has specific role
   Future<bool> hasRole(String role) async {
-    final userRole = await getUserRole();
-    return userRole == role;
+    try {
+      return (await getCurrentUser()).roleName == role;
+    } on ApiException {
+      return false;
+    }
   }
 
   /// Check if user is admin
@@ -226,7 +210,6 @@ class AuthService {
 
   /// Check if user is staff (staff or admin)
   Future<bool> isStaff() async {
-    final userRole = await getUserRole();
-    return userRole == 'STAFF' || userRole == 'ADMIN';
+    return (await getCurrentUser()).isStaff;
   }
 }

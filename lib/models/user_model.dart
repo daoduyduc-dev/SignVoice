@@ -39,21 +39,25 @@ enum AccountStatus {
 class UserModel {
   @JsonKey(name: '_id')
   final String id;
-  
+
   final String? email;
   final String displayName;
   final String? avatarUrl;
-  
+
   final AccountType accountType;
   final UserRole role;
+  final String? customRoleId;
+  final String? customRoleName;
+  @JsonKey(defaultValue: [])
+  final List<String> permissions;
   final AccountStatus status;
-  
+
   final bool isGuest;
   final DateTime? guestConvertedAt;
-  
+
   final DateTime? lastLoginAt;
   final String? lastLoginIp;
-  
+
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -64,6 +68,9 @@ class UserModel {
     this.avatarUrl,
     required this.accountType,
     required this.role,
+    this.customRoleId,
+    this.customRoleName,
+    this.permissions = const [],
     required this.status,
     required this.isGuest,
     this.guestConvertedAt,
@@ -73,8 +80,11 @@ class UserModel {
     required this.updatedAt,
   });
 
-  factory UserModel.fromJson(Map<String, dynamic> json) =>
-      _$UserModelFromJson(json);
+  factory UserModel.fromJson(Map<String, dynamic> json) => _$UserModelFromJson({
+    ...json,
+    '_id': json['_id'] ?? json['id'],
+    'updatedAt': json['updatedAt'] ?? json['createdAt'],
+  });
 
   Map<String, dynamic> toJson() => _$UserModelToJson(this);
 
@@ -82,10 +92,22 @@ class UserModel {
   bool get isActive => status == AccountStatus.active;
 
   /// Check if user is admin
-  bool get isAdmin => role == UserRole.admin;
+  bool get isAdmin => hasPermission('admin:access');
 
   /// Check if user is staff
-  bool get isStaff => role == UserRole.staff || role == UserRole.admin;
+  bool get isStaff => hasPermission('staff:access') || isAdmin;
+
+  bool hasPermission(String permission) {
+    if (customRoleId != null) return permissions.contains(permission);
+    if (role == UserRole.admin) return true;
+    return role == UserRole.staff &&
+        const [
+          'staff:access',
+          'dictionary:read',
+          'dictionary:write',
+          'users:read',
+        ].contains(permission);
+  }
 
   /// Get role name
   String get roleName {
@@ -107,6 +129,9 @@ class UserModel {
     String? avatarUrl,
     AccountType? accountType,
     UserRole? role,
+    String? customRoleId,
+    String? customRoleName,
+    List<String>? permissions,
     AccountStatus? status,
     bool? isGuest,
     DateTime? guestConvertedAt,
@@ -122,6 +147,9 @@ class UserModel {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       accountType: accountType ?? this.accountType,
       role: role ?? this.role,
+      customRoleId: customRoleId ?? this.customRoleId,
+      customRoleName: customRoleName ?? this.customRoleName,
+      permissions: permissions ?? this.permissions,
       status: status ?? this.status,
       isGuest: isGuest ?? this.isGuest,
       guestConvertedAt: guestConvertedAt ?? this.guestConvertedAt,

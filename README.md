@@ -55,6 +55,8 @@ Giao diện được chuyển từ `D:\Games\SignVoice_Flutter_FE\signvoice_flut
 
 ## Chạy ứng dụng
 
+Public bản web bằng Conveyor: [hướng dẫn chạy](docs/CONVEYOR_PUBLISHING.md).
+
 ```powershell
 flutter pub get
 flutter run -d chrome
@@ -63,6 +65,43 @@ flutter run -d chrome
 Để chạy trên Android hoặc nền tảng khác, dùng `flutter devices` rồi `flutter run -d <device-id>`.
 
 ## 2. Các luồng đã có
+
+### Đăng nhập JWT và phân quyền
+
+Đăng nhập, đăng ký và dùng thử đã kết nối backend. Flutter nhận `data.user`
+và `data.tokens`, gửi access token qua `Authorization: Bearer`, tự làm mới
+cả cặp token một lần khi access token hết hạn. Đăng xuất thu hồi cả access
+và refresh token của thiết bị hiện tại.
+
+| Vai trò | Quyền truy cập |
+| --- | --- |
+| USER / Guest | Các màn hình người dùng |
+| STAFF | Quyền USER và quản lý nội dung |
+| ADMIN | Quyền STAFF và quản trị hệ thống |
+
+Các mục quản lý nằm trong **Cá nhân** và chỉ xuất hiện theo vai trò của tài khoản.
+Backend xác minh JWT, phiên đăng nhập, trạng thái và vai trò hiện tại trong MongoDB
+trước mỗi API yêu cầu quyền. Đăng ký công khai luôn tạo tài khoản USER.
+
+Chạy web với cổng cố định trong danh sách CORS của backend:
+
+```powershell
+flutter run -d chrome --web-port 8080
+```
+
+Đổi địa chỉ API khi chạy trên Android emulator:
+
+```powershell
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000/api/v1
+```
+
+Native lưu token bằng secure storage. Web giữ access token trong bộ nhớ và dùng
+cookie refresh `HttpOnly`, `SameSite=Strict` (thêm `Secure` khi production).
+Frontend và backend web cần cùng site, ví dụ cùng `localhost` ở hai cổng khác nhau;
+thêm origin chính xác vào `CORS_ALLOWED_ORIGINS`. Thời hạn token lấy từ
+`JWT_ACCESS_EXPIRES_IN` và `JWT_REFRESH_EXPIRES_IN`.
+
+Các phiên từ phiên bản JWT cũ cần đăng nhập lại.
 
 - Splash tự chuyển đến onboarding → đăng nhập/đăng ký/dùng thử.
 - Kiểm tra email, mật khẩu, mật khẩu xác nhận; hiện/ẩn mật khẩu; đồng ý điều khoản.
@@ -82,11 +121,11 @@ Trên Chrome màn hình rộng, app hiển thị trong khung điện thoại. Tr
 
 ## 3. Phạm vi FE và dữ liệu demo
 
-- **Chưa tích hợp backend, AI, camera thực, microphone thực, TTS, OAuth Google hoặc cloud sync.** Các hành động này được ghi nhãn demo.
-- Đăng nhập demo chấp nhận email đúng định dạng và mật khẩu tối thiểu 8 ký tự; không xác thực tài khoản thật.
+- Đăng nhập JWT, đăng ký, guest và phân quyền đã tích hợp backend. AI, camera thực, microphone thực, TTS, OAuth Google và cloud sync vẫn là demo.
+- Đăng nhập kiểm tra tài khoản và mật khẩu trên backend; dữ liệu sai không mở trang chủ.
 - Quên mật khẩu không gửi email thật.
-- State nằm trong bộ nhớ qua `ChangeNotifier` + `InheritedNotifier`; đóng/restart ứng dụng sẽ khôi phục dữ liệu mẫu. Hot reload thường giữ state, hot restart đặt lại.
-- Dữ liệu không được gửi ra máy chủ; không có khóa API hay tài khoản cloud trong source.
+- State hội thoại demo nằm trong bộ nhớ qua `ChangeNotifier` + `InheritedNotifier` và được xóa khi đổi tài khoản/đăng xuất. Phiên JWT có thể khôi phục khi mở lại ứng dụng.
+- Thông tin đăng nhập được gửi đến API đã cấu hình. Dữ liệu hội thoại/nhận diện trong giao diện hiện tại vẫn là dữ liệu demo.
 - Dictionary dùng icon giữ chỗ cho media. Nội dung hướng dẫn `Xin chào` lấy từ source Figma; các mục khác chờ nội dung VSL đã kiểm chứng. Đây chưa phải bộ tài liệu học ngôn ngữ ký hiệu hoàn chỉnh.
 - Giao diện giữ màu, cấu trúc và các luồng chính của thiết kế; không cam kết khớp từng pixel. Màn hình hệ thống thật của Android về cấp quyền sẽ bổ sung khi tích hợp thiết bị.
 
@@ -115,6 +154,9 @@ lib/
 `main.dart` chỉ khởi tạo app; không dồn toàn bộ giao diện vào một hàm.
 
 ## Kiểm tra
+
+Cấu hình Gmail SMTP và khôi phục mật khẩu: [hướng dẫn SMTP](docs/SMTP_PASSWORD_RESET.md).
+Quản lý tài khoản, role tùy chỉnh và từ điển: [hướng dẫn Quản trị](docs/ADMIN_MANAGEMENT.md).
 
 ```powershell
 flutter analyze

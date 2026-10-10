@@ -4,31 +4,34 @@ info:
   version: 1.0.0
   description: |
     REST API phục vụ ứng dụng SignVoice Flutter Android và Flutter Web.
-    
+
     ## Xác thực (Authentication)
-    
+
     API sử dụng JWT Bearer token cho xác thực:
     1. Đăng ký/đăng nhập để nhận access token và refresh token
     2. Thêm header `Authorization: Bearer {accessToken}` vào các request yêu cầu xác thực
-    3. Khi access token hết hạn (401), dùng refresh token để lấy access token mới
-    
+    3. Khi access token hết hạn (401), dùng refresh token để nhận cặp token mới; token cũ bị thu hồi
+    4. Web có thể refresh bằng cookie signvoice_refresh (HttpOnly, SameSite=Strict) và Origin được cho phép
+
     ## Vai trò (Roles)
-    
+
     - **USER**: Người dùng thông thường (xem từ điển, lưu yêu thích, lịch sử)
-    - **STAFF**: Nhân viên quản lý nội dung (tạo, chỉnh sửa, duyệt nội dung)
+    - **STAFF**: Nhân viên quản lý nội dung (tạo và chỉnh sửa bản nháp)
     - **ADMIN**: Quản trị viên hệ thống (quản lý người dùng, phê duyệt cuối cùng)
-    
+
+    Role tùy chỉnh lưu trong collection roles và được gán bằng customRoleId. API lấy permissions từ database ở mỗi request. ADMIN là alias để tương thích JWT; custom role chỉ được cấp bộ quyền đã chọn, không tự kế thừa quyền ADMIN. Không thể cấp hoặc quản lý quyền cao hơn quyền của người gọi.
+
     ## Chế độ Guest
-    
+
     Người dùng có thể tạo tài khoản guest tạm thời mà không cần email/password.
     Guest có thể chuyển đổi thành tài khoản vĩnh viễn sau này.
-    
+
     ## Giới hạn
-    
+
     - **AI Recognition**: Chưa được tích hợp - các tính năng AI sẽ hiển thị thông báo "Tính năng AI chưa được tích hợp"
     - **OAuth**: Google/Facebook login chưa được cấu hình
     - **Email**: Xác thực email chưa được kích hoạt
-    
+
   contact:
     name: SignVoice Team
     email: support@signvoice.example.com
@@ -68,6 +71,65 @@ components:
       description: JWT access token nhận được từ endpoint đăng nhập
 
   schemas:
+    TokenPair:
+      type: object
+      required: [ accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt ]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        accessTokenExpiresAt:
+          type: string
+          format: date-time
+        refreshTokenExpiresAt:
+          type: string
+          format: date-time
+
+    AuthUser:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [ id, displayName, role, accountType, status, isGuest, createdAt, updatedAt ]
+          properties:
+            id:
+              type: string
+            isGuest:
+              type: boolean
+      properties:
+        permissions:
+          type: array
+          items:
+            type: string
+            enum:
+              - admin:access
+              - staff:access
+              - users:read
+              - users:write
+              - roles:read
+              - roles:write
+              - dictionary:read
+              - dictionary:write
+              - content:publish
+              - categories:read
+              - categories:write
+              - sessions:read
+              - sessions:write
+        customRoleId:
+          type: string
+          pattern: ^[a-fA-F0-9]{24}$
+        customRoleName:
+          type: string
+
+    AuthData:
+      type: object
+      required: [ user, tokens ]
+      properties:
+        user:
+          $ref: '#/components/schemas/AuthUser'
+        tokens:
+          $ref: '#/components/schemas/TokenPair'
+
     User:
       type: object
       properties:
@@ -83,16 +145,16 @@ components:
           example: "Nguyễn Văn A"
         role:
           type: string
-          enum: [USER, STAFF, ADMIN]
+          enum: [ USER, STAFF, ADMIN ]
           example: "USER"
         status:
           type: string
-          enum: [ACTIVE, INACTIVE, SUSPENDED, DELETED]
+          enum: [ ACTIVE, SUSPENDED, DELETED ]
           example: "ACTIVE"
         accountType:
           type: string
-          enum: [GUEST, PERMANENT]
-          example: "PERMANENT"
+          enum: [ LOCAL, GOOGLE, FACEBOOK, GUEST ]
+          example: "LOCAL"
         avatarUrl:
           type: string
           nullable: true
@@ -103,6 +165,29 @@ components:
         updatedAt:
           type: string
           format: date-time
+        permissions:
+          type: array
+          items:
+            type: string
+            enum:
+              - admin:access
+              - staff:access
+              - users:read
+              - users:write
+              - roles:read
+              - roles:write
+              - dictionary:read
+              - dictionary:write
+              - content:publish
+              - categories:read
+              - categories:write
+              - sessions:read
+              - sessions:write
+        customRoleId:
+          type: string
+          pattern: ^[a-fA-F0-9]{24}$
+        customRoleName:
+          type: string
 
     DictionaryEntry:
       type: object
@@ -134,10 +219,10 @@ components:
           type: array
           items:
             type: string
-          example: ["chào hỏi", "giao tiếp"]
+          example: [ "chào hỏi", "giao tiếp" ]
         difficulty:
           type: string
-          enum: [BASIC, INTERMEDIATE, ADVANCED]
+          enum: [ BASIC, INTERMEDIATE, ADVANCED ]
           example: "BASIC"
         usageExample:
           type: string
@@ -147,7 +232,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: [DRAFT, PENDING, PUBLISHED, REJECTED, ARCHIVED]
+          enum: [ DRAFT, PENDING, PUBLISHED, REJECTED, ARCHIVED ]
           example: "PUBLISHED"
         viewCount:
           type: integer
@@ -189,7 +274,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: [ACTIVE, INACTIVE]
+          enum: [ ACTIVE, INACTIVE ]
         createdAt:
           type: string
           format: date-time
@@ -242,7 +327,7 @@ components:
           type: string
         theme:
           type: string
-          enum: [LIGHT, DARK, SYSTEM]
+          enum: [ LIGHT, DARK, SYSTEM ]
           example: "SYSTEM"
         language:
           type: string
@@ -260,7 +345,7 @@ components:
           type: boolean
         videoQuality:
           type: string
-          enum: [AUTO, LOW, MEDIUM, HIGH]
+          enum: [ AUTO, LOW, MEDIUM, HIGH ]
         offlineMode:
           type: boolean
 
@@ -335,6 +420,305 @@ components:
                 message:
                   type: string
                   example: "Invalid email format"
+    AdminRoleInput:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - key
+        - permissions
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+        key:
+          type: string
+          pattern: ^[A-Z][A-Z0-9_]{1,39}$
+          description: Mã duy nhất; không dùng USER, STAFF hoặc ADMIN.
+        description:
+          type: string
+          maxLength: 500
+        permissions:
+          type: array
+          items:
+            type: string
+            enum:
+              - admin:access
+              - staff:access
+              - users:read
+              - users:write
+              - roles:read
+              - roles:write
+              - dictionary:read
+              - dictionary:write
+              - content:publish
+              - categories:read
+              - categories:write
+              - sessions:read
+              - sessions:write
+          uniqueItems: true
+    AdminRoleUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+        key:
+          type: string
+          pattern: ^[A-Z][A-Z0-9_]{1,39}$
+          description: Mã duy nhất; không dùng USER, STAFF hoặc ADMIN.
+        description:
+          type: string
+          maxLength: 500
+        permissions:
+          type: array
+          items:
+            type: string
+            enum:
+              - admin:access
+              - staff:access
+              - users:read
+              - users:write
+              - roles:read
+              - roles:write
+              - dictionary:read
+              - dictionary:write
+              - content:publish
+              - categories:read
+              - categories:write
+              - sessions:read
+              - sessions:write
+          uniqueItems: true
+      minProperties: 1
+    AdminUserInput:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - displayName
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: Có chữ và số.
+        role:
+          type: string
+          enum:
+            - USER
+            - STAFF
+            - ADMIN
+          default: USER
+        customRoleId:
+          type: string
+          pattern: ^[a-fA-F0-9]{24}$
+    AdminUserUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        role:
+          type: string
+          enum:
+            - USER
+            - STAFF
+            - ADMIN
+        customRoleId:
+          type: string
+          pattern: ^[a-fA-F0-9]{24}$
+          nullable: true
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - SUSPENDED
+            - DELETED
+      minProperties: 1
+    AdminDictionaryInput:
+      type: object
+      additionalProperties: false
+      required:
+        - word
+        - definition
+        - videoUrl
+        - categoryId
+      properties:
+        word:
+          type: string
+          minLength: 1
+          maxLength: 200
+        definition:
+          type: string
+          minLength: 5
+          maxLength: 2000
+        videoUrl:
+          type: string
+          format: uri
+          pattern: ^https?://
+        thumbnailUrl:
+          type: string
+        imageUrls:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uri
+        categoryId:
+          type: string
+          pattern: ^[a-fA-F0-9]{24}$
+        difficulty:
+          type: string
+          enum:
+            - BEGINNER
+            - INTERMEDIATE
+            - ADVANCED
+        status:
+          type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
+            - ARCHIVED
+        tags:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+        usageExample:
+          type: string
+          maxLength: 1000
+        notes:
+          type: string
+          maxLength: 1000
+    AdminDictionaryUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        word:
+          type: string
+          minLength: 1
+          maxLength: 200
+        definition:
+          type: string
+          minLength: 5
+          maxLength: 2000
+        videoUrl:
+          type: string
+          format: uri
+          pattern: ^https?://
+        thumbnailUrl:
+          type: string
+        imageUrls:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uri
+        categoryId:
+          type: string
+          pattern: ^[a-fA-F0-9]{24}$
+        difficulty:
+          type: string
+          enum:
+            - BEGINNER
+            - INTERMEDIATE
+            - ADVANCED
+        status:
+          type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
+            - ARCHIVED
+        tags:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+        usageExample:
+          type: string
+          maxLength: 1000
+        notes:
+          type: string
+          maxLength: 1000
+      minProperties: 1
+    AdminCategoryInput:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - slug
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+        slug:
+          type: string
+          pattern: ^[a-z0-9-]+$
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 500
+        icon:
+          type: string
+          maxLength: 50
+        sortOrder:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - ARCHIVED
+    AdminCategoryUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+        slug:
+          type: string
+          pattern: ^[a-z0-9-]+$
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 500
+        icon:
+          type: string
+          maxLength: 50
+        sortOrder:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - ARCHIVED
+      minProperties: 1
 
 paths:
   # System Health
@@ -453,16 +837,7 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    type: object
-                    properties:
-                      user:
-                        $ref: '#/components/schemas/User'
-                      accessToken:
-                        type: string
-                        example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                      refreshToken:
-                        type: string
-                        example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    $ref: '#/components/schemas/AuthData'
         '400':
           description: Dữ liệu không hợp lệ
           content:
@@ -512,14 +887,7 @@ paths:
                   success:
                     type: boolean
                   data:
-                    type: object
-                    properties:
-                      user:
-                        $ref: '#/components/schemas/User'
-                      accessToken:
-                        type: string
-                      refreshToken:
-                        type: string
+                    $ref: '#/components/schemas/AuthData'
         '401':
           description: Email hoặc password không đúng
           content:
@@ -545,15 +913,7 @@ paths:
                   success:
                     type: boolean
                   data:
-                    type: object
-                    properties:
-                      user:
-                        $ref: '#/components/schemas/User'
-                      accessToken:
-                        type: string
-                      refreshToken:
-                        type: string
-
+                    $ref: '#/components/schemas/AuthData'
   /api/v1/auth/convert-guest:
     post:
       tags:
@@ -572,6 +932,7 @@ paths:
               required:
                 - email
                 - password
+                - displayName
               properties:
                 email:
                   type: string
@@ -580,6 +941,10 @@ paths:
                   type: string
                   format: password
                   minLength: 8
+                displayName:
+                  type: string
+                  minLength: 2
+                  maxLength: 50
       responses:
         '200':
           description: Chuyển đổi thành công
@@ -591,14 +956,7 @@ paths:
                   success:
                     type: boolean
                   data:
-                    type: object
-                    properties:
-                      user:
-                        $ref: '#/components/schemas/User'
-                      accessToken:
-                        type: string
-                      refreshToken:
-                        type: string
+                    $ref: '#/components/schemas/AuthData'
         '400':
           description: Không phải tài khoản guest hoặc dữ liệu không hợp lệ
           content:
@@ -614,13 +972,11 @@ paths:
       description: Sử dụng refresh token để lấy access token mới
       operationId: refreshToken
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
-              required:
-                - refreshToken
               properties:
                 refreshToken:
                   type: string
@@ -636,16 +992,70 @@ paths:
                   success:
                     type: boolean
                   data:
-                    type: object
-                    properties:
-                      accessToken:
-                        type: string
+                    $ref: '#/components/schemas/TokenPair'
         '401':
           description: Refresh token không hợp lệ hoặc hết hạn
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/forgot-password:
+    post:
+      tags: [ Auth ]
+      summary: Yêu cầu email đặt lại mật khẩu
+      description: Không tiết lộ email có tồn tại. SMTP phải được cấu hình. Giới hạn mỗi tài khoản một yêu cầu trong 60 giây; liên kết có hiệu lực 15 phút.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ email ]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Đã xử lý yêu cầu; phản hồi chung cho mọi địa chỉ email
+        '400':
+          description: Email không hợp lệ
+        '429':
+          description: Quá nhiều yêu cầu
+        '503':
+          description: Chưa cấu hình SMTP
+
+  /api/v1/auth/reset-password:
+    post:
+      tags: [ Auth ]
+      summary: Đặt mật khẩu mới bằng token nhận trong email
+      description: Token dùng một lần. Mật khẩu mới 8–128 ký tự, có chữ cái và chữ số. Thu hồi mọi phiên đăng nhập cũ.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ token, newPassword ]
+              properties:
+                token:
+                  type: string
+                  pattern: '^[a-f0-9]{64}$'
+                newPassword:
+                  type: string
+                  format: password
+                  minLength: 8
+                  maxLength: 128
+      responses:
+        '200':
+          description: Đã đặt lại mật khẩu, xóa refresh cookie; cần đăng nhập lại
+        '400':
+          description: Mật khẩu không hợp lệ hoặc token sai, hết hạn, đã dùng
+        '429':
+          description: Quá nhiều yêu cầu
 
   /api/v1/auth/logout:
     post:
@@ -750,7 +1160,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [BASIC, INTERMEDIATE, ADVANCED]
+            enum: [ BASIC, INTERMEDIATE, ADVANCED ]
           description: Lọc theo độ khó
         - name: limit
           in: query
@@ -831,7 +1241,7 @@ paths:
                     type: string
                 difficulty:
                   type: string
-                  enum: [BASIC, INTERMEDIATE, ADVANCED]
+                  enum: [ BASIC, INTERMEDIATE, ADVANCED ]
                 usageExample:
                   type: string
                 notes:
@@ -1136,7 +1546,7 @@ paths:
                   type: string
                 status:
                   type: string
-                  enum: [ACTIVE, INACTIVE]
+                  enum: [ ACTIVE, INACTIVE ]
       responses:
         '201':
           description: Danh mục được tạo thành công
@@ -1508,7 +1918,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [DRAFT, PENDING, PUBLISHED, REJECTED, ARCHIVED]
+            enum: [ DRAFT, PENDING, PUBLISHED, REJECTED, ARCHIVED ]
         - name: category
           in: query
           schema:
@@ -1522,7 +1932,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [asc, desc]
+            enum: [ asc, desc ]
             default: desc
         - name: page
           in: query
@@ -1750,12 +2160,12 @@ paths:
           in: query
           schema:
             type: string
-            enum: [USER, STAFF, ADMIN]
+            enum: [ USER, STAFF, ADMIN ]
         - name: status
           in: query
           schema:
             type: string
-            enum: [ACTIVE, INACTIVE, SUSPENDED, DELETED]
+            enum: [ ACTIVE, INACTIVE, SUSPENDED, DELETED ]
       responses:
         '200':
           description: Danh sách người dùng
@@ -1937,17 +2347,17 @@ paths:
           in: query
           schema:
             type: string
-            enum: [USER, STAFF, ADMIN]
+            enum: [ USER, STAFF, ADMIN ]
         - name: status
           in: query
           schema:
             type: string
-            enum: [ACTIVE, INACTIVE, SUSPENDED, DELETED]
+            enum: [ ACTIVE, INACTIVE, SUSPENDED, DELETED ]
         - name: accountType
           in: query
           schema:
             type: string
-            enum: [GUEST, PERMANENT]
+            enum: [ GUEST, PERMANENT ]
         - name: sortBy
           in: query
           schema:
@@ -1957,7 +2367,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [asc, desc]
+            enum: [ asc, desc ]
             default: desc
       responses:
         '200':
@@ -1984,6 +2394,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - Admin
+      summary: Tạo tài khoản và gán role
+      description: Yêu cầu admin:access và users:write. Quyền được lấy từ role hiện tại trong database.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - users:write
+      responses:
+        "201":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUserInput"
 
   /api/v1/admin/users/{id}:
     get:
@@ -2026,51 +2465,39 @@ paths:
     patch:
       tags:
         - Admin
-      summary: Cập nhật người dùng (ADMIN)
-      description: Cập nhật thông tin, vai trò, trạng thái người dùng
-      operationId: updateAdminUser
+      summary: Sửa tài khoản, role hoặc trạng thái
+      description: Yêu cầu admin:access và users:write. Quyền được lấy từ role hiện tại trong database.
       security:
         - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - users:write
+      responses:
+        "200":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
       parameters:
-        - name: id
-          in: path
+        - in: path
+          name: id
           required: true
           schema:
             type: string
+            pattern: ^[a-fA-F0-9]{24}$
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                displayName:
-                  type: string
-                role:
-                  type: string
-                  enum: [USER, STAFF, ADMIN]
-                status:
-                  type: string
-                  enum: [ACTIVE, INACTIVE, SUSPENDED, DELETED]
-                avatarUrl:
-                  type: string
-      responses:
-        '200':
-          description: Cập nhật thành công
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  data:
-                    type: object
-                    properties:
-                      user:
-                        $ref: '#/components/schemas/User'
-                  message:
-                    type: string
+              $ref: "#/components/schemas/AdminUserUpdate"
 
     delete:
       tags:
@@ -2359,3 +2786,410 @@ paths:
                     type: boolean
                   message:
                     type: string
+  /api/v1/admin/roles:
+    get:
+      tags:
+        - Admin
+      summary: Danh sách role tùy chỉnh
+      description: Yêu cầu admin:access và roles:read. Quyền được lấy từ role hiện tại trong database.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - roles:read
+      responses:
+        "200":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+    post:
+      tags:
+        - Admin
+      summary: Tạo role tùy chỉnh
+      description: Yêu cầu admin:access và roles:write. Quyền được lấy từ role hiện tại trong database.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - roles:write
+      responses:
+        "201":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminRoleInput"
+  /api/v1/admin/roles/{id}:
+    patch:
+      tags:
+        - Admin
+      summary: Cập nhật role tùy chỉnh
+      description: Yêu cầu admin:access và roles:write. Quyền được lấy từ role hiện tại trong database.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - roles:write
+      responses:
+        "200":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-fA-F0-9]{24}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminRoleUpdate"
+    delete:
+      tags:
+        - Admin
+      summary: Xóa role tùy chỉnh
+      description: Chỉ xóa role tùy chỉnh chưa được gán cho tài khoản. USER/STAFF/ADMIN là role hệ thống cố định.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - roles:write
+      responses:
+        "200":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-fA-F0-9]{24}$
+  /api/v1/admin/dictionary:
+    get:
+      tags:
+        - Admin
+      summary: Danh sách mục từ điển
+      description: Yêu cầu admin:access và dictionary:read. Quyền được lấy từ role hiện tại trong database.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - dictionary:read
+      responses:
+        "200":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: search
+          schema:
+            type: string
+            maxLength: 100
+        - in: query
+          name: status
+          schema:
+            type: string
+    post:
+      tags:
+        - Admin
+      summary: Tạo mục từ điển
+      description: Yêu cầu admin:access và dictionary:write; xuất bản cần thêm content:publish. Danh mục phải đang ACTIVE.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - dictionary:write
+      responses:
+        "201":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminDictionaryInput"
+  /api/v1/admin/dictionary/{id}:
+    patch:
+      tags:
+        - Admin
+      summary: Cập nhật mục từ điển
+      description: Yêu cầu admin:access và dictionary:write; sửa mục PUBLISHED hoặc chuyển sang PUBLISHED cần content:publish. Đồng bộ wordCount cho danh mục.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - dictionary:write
+      responses:
+        "200":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-fA-F0-9]{24}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminDictionaryUpdate"
+    delete:
+      tags:
+        - Admin
+      summary: Xóa mục từ điển
+      description: Yêu cầu admin:access và dictionary:write; xóa mục PUBLISHED cần content:publish. Xóa cả tham chiếu yêu thích và lịch sử tra cứu.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - dictionary:write
+      responses:
+        "200":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-fA-F0-9]{24}$
+  /api/v1/admin/categories:
+    get:
+      tags:
+        - Admin
+      summary: Danh sách danh mục
+      description: Yêu cầu admin:access và categories:read. Quyền được lấy từ role hiện tại trong database.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - categories:read
+      responses:
+        "200":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+    post:
+      tags:
+        - Admin
+      summary: Tạo danh mục
+      description: Yêu cầu admin:access và categories:write. Quyền được lấy từ role hiện tại trong database.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - categories:write
+      responses:
+        "201":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCategoryInput"
+  /api/v1/admin/categories/{id}:
+    patch:
+      tags:
+        - Admin
+      summary: Cập nhật danh mục
+      description: Yêu cầu admin:access và categories:write. Quyền được lấy từ role hiện tại trong database.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - categories:write
+      responses:
+        "200":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-fA-F0-9]{24}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCategoryUpdate"
+    delete:
+      tags:
+        - Admin
+      summary: Xóa danh mục
+      description: Không xóa danh mục còn chứa mục từ điển hoặc danh mục con (409).
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - categories:write
+      responses:
+        "200":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-fA-F0-9]{24}$
+  /api/v1/admin/users/role-options:
+    get:
+      tags:
+        - Admin
+      summary: Các role có thể gán cho tài khoản
+      description: Chỉ trả về role có bộ quyền nằm trong bộ quyền người gọi; không yêu cầu roles:read.
+      security:
+        - bearerAuth: []
+      x-permissions:
+        - admin:access
+        - users:write
+      responses:
+        "200":
+          description: Thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+        "401":
+          description: Chưa xác thực
+        "403":
+          description: Không đủ quyền
+        "404":
+          description: Không tìm thấy dữ liệu
+        "409":
+          description: Dữ liệu trùng hoặc đang được sử dụng

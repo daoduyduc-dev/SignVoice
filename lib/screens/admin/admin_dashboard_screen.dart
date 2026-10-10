@@ -1,187 +1,197 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../providers/admin_provider.dart';
 
-/// Admin dashboard screen
+import '../../providers/auth_provider.dart';
+import '../../services/admin/admin_workspace_service.dart';
+import '../../widgets/ui.dart';
+
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
-
   @override
   State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  AdminRecord? _stats;
+  String? _error;
+  bool _loading = true;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AdminProvider>().loadStats();
+      if (mounted) _load();
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final adminProvider = context.watch<AdminProvider>();
-    final stats = adminProvider.stats;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Quản trị hệ thống'),
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => adminProvider.loadStats(),
-        child: adminProvider.isLoading && stats == null
-            ? const Center(child: CircularProgressIndicator())
-            : adminProvider.errorMessage != null && stats == null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text('Lỗi: ${adminProvider.errorMessage}'),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: () => adminProvider.loadStats(),
-                          child: const Text('Thử lại'),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      Text(
-                        'Thống kê hệ thống',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // User stats
-                      if (stats != null) ...[
-                        _StatCard(
-                          title: 'Người dùng',
-                          items: [
-                            _StatItem('Tổng số', stats.users.total.toString()),
-                            _StatItem('Hoạt động', stats.users.active.toString()),
-                            _StatItem('Đình chỉ', stats.users.suspended.toString()),
-                            _StatItem('Khách', stats.users.guests.toString()),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Content stats
-                        _StatCard(
-                          title: 'Nội dung',
-                          items: [
-                            _StatItem('Tổng số', stats.content.total.toString()),
-                            _StatItem('Đã xuất bản', stats.content.published.toString()),
-                            _StatItem('Chờ duyệt', stats.content.pending.toString()),
-                            _StatItem('Đã lưu trữ', stats.content.archived.toString()),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Session stats
-                        _StatCard(
-                          title: 'Phiên đăng nhập',
-                          items: [
-                            _StatItem('Tổng số', stats.sessions.total.toString()),
-                            _StatItem('Đang hoạt động', stats.sessions.active.toString()),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 24),
-
-                      // Quick actions
-                      Text(
-                        'Thao tác nhanh',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 12),
-                      Card(
-                        child: Column(
-                          children: [
-                            ListTile(
-                              leading: const Icon(Icons.people),
-                              title: const Text('Quản lý người dùng'),
-                              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                              onTap: () => Navigator.pushNamed(context, '/admin/users'),
-                            ),
-                            const Divider(height: 1),
-                            ListTile(
-                              leading: const Icon(Icons.pending_actions),
-                              title: const Text('Xét duyệt nội dung'),
-                              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                              onTap: () => Navigator.pushNamed(context, '/admin/content'),
-                            ),
-                            const Divider(height: 1),
-                            ListTile(
-                              leading: const Icon(Icons.category),
-                              title: const Text('Quản lý danh mục'),
-                              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                              onTap: () => Navigator.pushNamed(context, '/admin/categories'),
-                            ),
-                            const Divider(height: 1),
-                            ListTile(
-                              leading: const Icon(Icons.devices),
-                              title: const Text('Quản lý phiên'),
-                              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                              onTap: () => Navigator.pushNamed(context, '/admin/sessions'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-      ),
-    );
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await context.read<AuthProvider>().refreshUser();
+      if (!mounted) return;
+      final stats = await context.read<AdminWorkspaceService>().stats();
+      if (mounted) setState(() => _stats = stats);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Không tải được thống kê. Hãy thử lại.');
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
-}
-
-class _StatCard extends StatelessWidget {
-  final String title;
-  final List<_StatItem> items;
-
-  const _StatCard({
-    required this.title,
-    required this.items,
-  });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final auth = context.watch<AuthProvider>();
+    return AppPage(
+      title: 'Quản trị',
+      showBack: false,
+      tabIndex: 4,
+      scroll: false,
+      actions: [
+        IconButton(
+          tooltip: 'Làm mới',
+          onPressed: _loading ? null : _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
+      child: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           children: [
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            ...items.map((item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(item.label),
-                      Text(
-                        item.value,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ],
+            Text('Dashboard', style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 6),
+            const Text('Quản lý hệ thống và nội dung'),
+            const SizedBox(height: 18),
+            if (_loading) const LinearProgressIndicator(),
+            if (_error != null)
+              Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            if (_stats != null)
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  if (auth.can('users:read'))
+                    _stat(
+                      'Tài khoản',
+                      _stats!['users']['total'],
+                      Icons.people_outline,
+                    ),
+                  if (auth.can('dictionary:read')) ...[
+                    _stat(
+                      'Mục từ điển',
+                      _stats!['content']['total'],
+                      Icons.menu_book,
+                    ),
+                    _stat(
+                      'Đã xuất bản',
+                      _stats!['content']['published'],
+                      Icons.check_circle_outline,
+                    ),
+                    _stat(
+                      'Bản nháp',
+                      _stats!['content']['pending'],
+                      Icons.edit_note,
+                    ),
+                  ],
+                  if (auth.can('sessions:read'))
+                    _stat(
+                      'Phiên hoạt động',
+                      _stats!['sessions']['active'],
+                      Icons.devices,
+                    ),
+                ],
+              ),
+            const SizedBox(height: 24),
+            Text('Quản lý', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 10),
+            for (final module in adminModules.entries)
+              if (auth.can('${module.key}:read'))
+                Card(
+                  child: ListTile(
+                    leading: Icon(
+                      module.value.icon,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    title: Text(module.value.title),
+                    subtitle: Text(module.value.description),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () =>
+                        Navigator.pushNamed(context, '/admin/${module.key}'),
                   ),
-                )),
+                ),
+            if (auth.can('dictionary:read'))
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.fact_check_outlined),
+                  title: const Text('Duyệt nội dung'),
+                  subtitle: const Text('Kiểm tra và xuất bản bản nháp'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.pushNamed(context, '/admin/content'),
+                ),
+              ),
           ],
         ),
       ),
     );
   }
+
+  Widget _stat(String label, dynamic value, IconData icon) => SizedBox(
+    width: 160,
+    child: Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(height: 8),
+            Text('$value', style: Theme.of(context).textTheme.headlineSmall),
+            Text(label),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
-class _StatItem {
-  final String label;
-  final String value;
-
-  _StatItem(this.label, this.value);
+class AdminModule {
+  const AdminModule(this.title, this.description, this.icon);
+  final String title, description;
+  final IconData icon;
 }
+
+const adminModules = {
+  'users': AdminModule(
+    'Tài khoản',
+    'Tạo tài khoản, gán role và khóa tài khoản',
+    Icons.people_outline,
+  ),
+  'roles': AdminModule(
+    'Role & phân quyền',
+    'Tạo role tùy chỉnh và chọn bộ quyền',
+    Icons.admin_panel_settings_outlined,
+  ),
+  'dictionary': AdminModule(
+    'Từ điển',
+    'Thêm, sửa, xóa và xuất bản mục từ',
+    Icons.menu_book_outlined,
+  ),
+  'categories': AdminModule(
+    'Danh mục',
+    'Sắp xếp và quản lý chủ đề từ điển',
+    Icons.category_outlined,
+  ),
+  'sessions': AdminModule(
+    'Phiên đăng nhập',
+    'Xem thiết bị và thu hồi phiên',
+    Icons.devices_outlined,
+  ),
+};
