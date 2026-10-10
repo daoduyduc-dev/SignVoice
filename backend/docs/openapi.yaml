@@ -1,0 +1,2361 @@
+openapi: 3.0.3
+info:
+  title: SignVoice REST API
+  version: 1.0.0
+  description: |
+    REST API phục vụ ứng dụng SignVoice Flutter Android và Flutter Web.
+    
+    ## Xác thực (Authentication)
+    
+    API sử dụng JWT Bearer token cho xác thực:
+    1. Đăng ký/đăng nhập để nhận access token và refresh token
+    2. Thêm header `Authorization: Bearer {accessToken}` vào các request yêu cầu xác thực
+    3. Khi access token hết hạn (401), dùng refresh token để lấy access token mới
+    
+    ## Vai trò (Roles)
+    
+    - **USER**: Người dùng thông thường (xem từ điển, lưu yêu thích, lịch sử)
+    - **STAFF**: Nhân viên quản lý nội dung (tạo, chỉnh sửa, duyệt nội dung)
+    - **ADMIN**: Quản trị viên hệ thống (quản lý người dùng, phê duyệt cuối cùng)
+    
+    ## Chế độ Guest
+    
+    Người dùng có thể tạo tài khoản guest tạm thời mà không cần email/password.
+    Guest có thể chuyển đổi thành tài khoản vĩnh viễn sau này.
+    
+    ## Giới hạn
+    
+    - **AI Recognition**: Chưa được tích hợp - các tính năng AI sẽ hiển thị thông báo "Tính năng AI chưa được tích hợp"
+    - **OAuth**: Google/Facebook login chưa được cấu hình
+    - **Email**: Xác thực email chưa được kích hoạt
+    
+  contact:
+    name: SignVoice Team
+    email: support@signvoice.example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: /
+    description: Same-origin server
+
+tags:
+  - name: System
+    description: Kiểm tra sức khỏe hệ thống
+  - name: Authentication
+    description: Đăng ký, đăng nhập, quản lý phiên làm việc
+  - name: Dictionary
+    description: Quản lý từ điển ngôn ngữ ký hiệu
+  - name: Categories
+    description: Danh mục từ vựng
+  - name: Favorites
+    description: Danh sách yêu thích của người dùng
+  - name: History
+    description: Lịch sử tra cứu
+  - name: Users
+    description: Quản lý hồ sơ và cài đặt người dùng
+  - name: Staff
+    description: Công cụ quản lý nội dung cho nhân viên
+  - name: Admin
+    description: Quản trị hệ thống
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token nhận được từ endpoint đăng nhập
+
+  schemas:
+    User:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "507f1f77bcf86cd799439011"
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        displayName:
+          type: string
+          example: "Nguyễn Văn A"
+        role:
+          type: string
+          enum: [USER, STAFF, ADMIN]
+          example: "USER"
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, SUSPENDED, DELETED]
+          example: "ACTIVE"
+        accountType:
+          type: string
+          enum: [GUEST, PERMANENT]
+          example: "PERMANENT"
+        avatarUrl:
+          type: string
+          nullable: true
+          example: "https://example.com/avatar.jpg"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DictionaryEntry:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "507f1f77bcf86cd799439011"
+        word:
+          type: string
+          example: "Xin chào"
+        definition:
+          type: string
+          example: "Lời chào hỏi khi gặp gỡ"
+        videoUrl:
+          type: string
+          example: "https://example.com/videos/xin-chao.mp4"
+        thumbnailUrl:
+          type: string
+          nullable: true
+          example: "https://example.com/thumbs/xin-chao.jpg"
+        categoryId:
+          type: string
+          example: "507f1f77bcf86cd799439011"
+        imageUrls:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["chào hỏi", "giao tiếp"]
+        difficulty:
+          type: string
+          enum: [BASIC, INTERMEDIATE, ADVANCED]
+          example: "BASIC"
+        usageExample:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [DRAFT, PENDING, PUBLISHED, REJECTED, ARCHIVED]
+          example: "PUBLISHED"
+        viewCount:
+          type: integer
+          example: 150
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Category:
+      type: object
+      properties:
+        _id:
+          type: string
+        name:
+          type: string
+          example: "Chào hỏi"
+        slug:
+          type: string
+          example: "chao-hoi"
+        description:
+          type: string
+          example: "Các từ vựng về lời chào hỏi"
+        icon:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+          example: 1
+        wordCount:
+          type: integer
+          example: 25
+        parentId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Favorite:
+      type: object
+      properties:
+        _id:
+          type: string
+        userId:
+          type: string
+        entryId:
+          oneOf:
+            - type: string
+            - $ref: '#/components/schemas/DictionaryEntry'
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    SearchHistory:
+      type: object
+      properties:
+        _id:
+          type: string
+        userId:
+          type: string
+        entryId:
+          oneOf:
+            - type: string
+            - $ref: '#/components/schemas/DictionaryEntry'
+        viewedAt:
+          type: string
+          format: date-time
+        viewDuration:
+          type: integer
+          nullable: true
+
+    UserSettings:
+      type: object
+      properties:
+        _id:
+          type: string
+        userId:
+          type: string
+        theme:
+          type: string
+          enum: [LIGHT, DARK, SYSTEM]
+          example: "SYSTEM"
+        language:
+          type: string
+          example: "vi"
+        notifications:
+          type: object
+          properties:
+            email:
+              type: boolean
+            push:
+              type: boolean
+            newContent:
+              type: boolean
+        videoAutoplay:
+          type: boolean
+        videoQuality:
+          type: string
+          enum: [AUTO, LOW, MEDIUM, HIGH]
+        offlineMode:
+          type: boolean
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+        message:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: "AUTH_TOKEN_EXPIRED"
+            message:
+              type: string
+              example: "Token has expired"
+            details:
+              type: object
+        requestId:
+          type: string
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 150
+        pages:
+          type: integer
+          example: 8
+
+    ValidationError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: "VALIDATION_ERROR"
+            message:
+              type: string
+              example: "Validation failed"
+            details:
+              type: object
+              properties:
+                field:
+                  type: string
+                  example: "email"
+                message:
+                  type: string
+                  example: "Invalid email format"
+
+paths:
+  # System Health
+  /health/live:
+    get:
+      tags:
+        - System
+      summary: Kiểm tra server đang chạy
+      description: Endpoint đơn giản kiểm tra server có đang hoạt động hay không
+      operationId: healthLive
+      responses:
+        '200':
+          description: Server đang chạy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: "ok"
+                      timestamp:
+                        type: string
+                        format: date-time
+                      uptime:
+                        type: number
+                        example: 12345.67
+
+  /health/ready:
+    get:
+      tags:
+        - System
+      summary: Kiểm tra server sẵn sàng phục vụ
+      description: Kiểm tra server và database đã kết nối và sẵn sàng
+      operationId: healthReady
+      responses:
+        '200':
+          description: Server và database sẵn sàng
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: "ready"
+                      timestamp:
+                        type: string
+                        format: date-time
+                      database:
+                        type: object
+                        properties:
+                          connected:
+                            type: boolean
+                          name:
+                            type: string
+        '503':
+          description: Database chưa sẵn sàng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Authentication
+  /api/v1/auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Đăng ký tài khoản mới
+      description: Tạo tài khoản người dùng mới với email và password
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - displayName
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "user@example.com"
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: "Password123!"
+                displayName:
+                  type: string
+                  example: "Nguyễn Văn A"
+      responses:
+        '201':
+          description: Đăng ký thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      accessToken:
+                        type: string
+                        example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      refreshToken:
+                        type: string
+                        example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        '400':
+          description: Dữ liệu không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '409':
+          description: Email đã tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Đăng nhập
+      description: Đăng nhập bằng email và password
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "user@example.com"
+                password:
+                  type: string
+                  format: password
+                  example: "Password123!"
+      responses:
+        '200':
+          description: Đăng nhập thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      accessToken:
+                        type: string
+                      refreshToken:
+                        type: string
+        '401':
+          description: Email hoặc password không đúng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/guest:
+    post:
+      tags:
+        - Authentication
+      summary: Tạo tài khoản guest
+      description: Tạo tài khoản guest tạm thời không cần email/password
+      operationId: createGuest
+      responses:
+        '201':
+          description: Tài khoản guest được tạo thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      accessToken:
+                        type: string
+                      refreshToken:
+                        type: string
+
+  /api/v1/auth/convert-guest:
+    post:
+      tags:
+        - Authentication
+      summary: Chuyển đổi tài khoản guest thành vĩnh viễn
+      description: Thêm email và password cho tài khoản guest
+      operationId: convertGuest
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+      responses:
+        '200':
+          description: Chuyển đổi thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      accessToken:
+                        type: string
+                      refreshToken:
+                        type: string
+        '400':
+          description: Không phải tài khoản guest hoặc dữ liệu không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Làm mới access token
+      description: Sử dụng refresh token để lấy access token mới
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        '200':
+          description: Access token mới
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      accessToken:
+                        type: string
+        '401':
+          description: Refresh token không hợp lệ hoặc hết hạn
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Đăng xuất
+      description: Hủy phiên đăng nhập hiện tại
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Đăng xuất thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '401':
+          description: Chưa xác thực
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/logout-all:
+    post:
+      tags:
+        - Authentication
+      summary: Đăng xuất tất cả thiết bị
+      description: Hủy tất cả phiên đăng nhập của người dùng
+      operationId: logoutAll
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Đã đăng xuất khỏi tất cả thiết bị
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /api/v1/auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Lấy thông tin người dùng hiện tại
+      description: Trả về thông tin chi tiết của người dùng đang đăng nhập
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Thông tin người dùng
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+        '401':
+          description: Chưa xác thực
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Dictionary
+  /api/v1/dictionary:
+    get:
+      tags:
+        - Dictionary
+      summary: Lấy danh sách từ điển đã xuất bản
+      description: Tìm kiếm và lọc các từ điển với phân trang
+      operationId: getDictionaryEntries
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+          description: Lọc theo danh mục
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Tìm kiếm theo từ hoặc định nghĩa
+        - name: difficulty
+          in: query
+          schema:
+            type: string
+            enum: [BASIC, INTERMEDIATE, ADVANCED]
+          description: Lọc theo độ khó
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Số lượng kết quả mỗi trang
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Bỏ qua n kết quả đầu tiên
+      responses:
+        '200':
+          description: Danh sách từ điển
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DictionaryEntry'
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+                      skip:
+                        type: integer
+
+    post:
+      tags:
+        - Dictionary
+      summary: Tạo từ điển mới (STAFF/ADMIN)
+      description: Tạo bản nháp từ điển mới
+      operationId: createDictionaryEntry
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - word
+                - definition
+                - videoUrl
+                - categoryId
+              properties:
+                word:
+                  type: string
+                  example: "Xin chào"
+                definition:
+                  type: string
+                  example: "Lời chào hỏi khi gặp gỡ"
+                videoUrl:
+                  type: string
+                  example: "https://example.com/videos/xin-chao.mp4"
+                categoryId:
+                  type: string
+                thumbnailUrl:
+                  type: string
+                imageUrls:
+                  type: array
+                  items:
+                    type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                difficulty:
+                  type: string
+                  enum: [BASIC, INTERMEDIATE, ADVANCED]
+                usageExample:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Từ điển được tạo thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      entry:
+                        $ref: '#/components/schemas/DictionaryEntry'
+        '400':
+          description: Dữ liệu không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '403':
+          description: Không có quyền (yêu cầu STAFF hoặc ADMIN)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/dictionary/popular:
+    get:
+      tags:
+        - Dictionary
+      summary: Lấy các từ phổ biến
+      description: Trả về các từ điển được xem nhiều nhất
+      operationId: getPopularEntries
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Số lượng từ phổ biến cần lấy
+      responses:
+        '200':
+          description: Danh sách từ phổ biến
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DictionaryEntry'
+
+  /api/v1/dictionary/{id}:
+    get:
+      tags:
+        - Dictionary
+      summary: Lấy chi tiết từ điển
+      description: Trả về thông tin chi tiết của một từ điển
+      operationId: getDictionaryEntryById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID của từ điển
+      responses:
+        '200':
+          description: Chi tiết từ điển
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      entry:
+                        $ref: '#/components/schemas/DictionaryEntry'
+        '404':
+          description: Không tìm thấy từ điển
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      tags:
+        - Dictionary
+      summary: Cập nhật từ điển (STAFF/ADMIN)
+      description: Cập nhật thông tin từ điển
+      operationId: updateDictionaryEntry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                word:
+                  type: string
+                definition:
+                  type: string
+                videoUrl:
+                  type: string
+                thumbnailUrl:
+                  type: string
+                imageUrls:
+                  type: array
+                  items:
+                    type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                difficulty:
+                  type: string
+                usageExample:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      entry:
+                        $ref: '#/components/schemas/DictionaryEntry'
+        '403':
+          description: Không có quyền
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Không tìm thấy từ điển
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/dictionary/{id}/publish:
+    post:
+      tags:
+        - Dictionary
+      summary: Xuất bản từ điển (ADMIN)
+      description: Xuất bản từ điển để hiển thị công khai
+      operationId: publishEntry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Xuất bản thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      entry:
+                        $ref: '#/components/schemas/DictionaryEntry'
+        '403':
+          description: Không có quyền (yêu cầu ADMIN)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/dictionary/{id}/archive:
+    post:
+      tags:
+        - Dictionary
+      summary: Lưu trữ từ điển (ADMIN)
+      description: Lưu trữ từ điển (không hiển thị công khai)
+      operationId: archiveEntry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lưu trữ thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      entry:
+                        $ref: '#/components/schemas/DictionaryEntry'
+        '403':
+          description: Không có quyền
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Categories
+  /api/v1/categories:
+    get:
+      tags:
+        - Categories
+      summary: Lấy danh sách danh mục
+      description: Trả về tất cả danh mục đang hoạt động
+      operationId: getCategories
+      responses:
+        '200':
+          description: Danh sách danh mục
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+
+    post:
+      tags:
+        - Categories
+      summary: Tạo danh mục mới (ADMIN)
+      description: Tạo danh mục từ vựng mới
+      operationId: createCategory
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - slug
+                - sortOrder
+                - status
+              properties:
+                name:
+                  type: string
+                  example: "Chào hỏi"
+                slug:
+                  type: string
+                  example: "chao-hoi"
+                description:
+                  type: string
+                icon:
+                  type: string
+                sortOrder:
+                  type: integer
+                  example: 1
+                parentId:
+                  type: string
+                status:
+                  type: string
+                  enum: [ACTIVE, INACTIVE]
+      responses:
+        '201':
+          description: Danh mục được tạo thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Category'
+        '403':
+          description: Không có quyền (yêu cầu ADMIN)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/categories/{slug}:
+    get:
+      tags:
+        - Categories
+      summary: Lấy danh mục theo slug
+      description: Trả về thông tin chi tiết của danh mục
+      operationId: getCategoryBySlug
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "chao-hoi"
+      responses:
+        '200':
+          description: Chi tiết danh mục
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Category'
+        '404':
+          description: Không tìm thấy danh mục
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Favorites
+  /api/v1/favorites:
+    get:
+      tags:
+        - Favorites
+      summary: Lấy danh sách yêu thích
+      description: Trả về danh sách từ điển yêu thích của người dùng
+      operationId: getFavorites
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Danh sách yêu thích
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Favorite'
+        '401':
+          description: Chưa xác thực
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Favorites
+      summary: Thêm vào danh sách yêu thích
+      description: Lưu từ điển vào danh sách yêu thích
+      operationId: addFavorite
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - entryId
+              properties:
+                entryId:
+                  type: string
+                  example: "507f1f77bcf86cd799439011"
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Đã thêm vào yêu thích
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Favorite'
+        '400':
+          description: Dữ liệu không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '401':
+          description: Chưa xác thực
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/favorites/{entryId}:
+    delete:
+      tags:
+        - Favorites
+      summary: Xóa khỏi danh sách yêu thích
+      description: Xóa từ điển khỏi danh sách yêu thích
+      operationId: removeFavorite
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Đã xóa khỏi yêu thích
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+        '404':
+          description: Không tìm thấy trong danh sách yêu thích
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # History
+  /api/v1/history:
+    get:
+      tags:
+        - History
+      summary: Lấy lịch sử tra cứu
+      description: Trả về lịch sử tra cứu của người dùng
+      operationId: getHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Lịch sử tra cứu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SearchHistory'
+        '401':
+          description: Chưa xác thực
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - History
+      summary: Xóa lịch sử tra cứu
+      description: Xóa toàn bộ lịch sử tra cứu của người dùng
+      operationId: clearHistory
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lịch sử đã được xóa
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      deletedCount:
+                        type: integer
+        '401':
+          description: Chưa xác thực
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Users
+  /api/v1/users/profile:
+    get:
+      tags:
+        - Users
+      summary: Lấy hồ sơ người dùng
+      description: Trả về thông tin hồ sơ người dùng hiện tại
+      operationId: getUserProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Hồ sơ người dùng
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/User'
+
+    patch:
+      tags:
+        - Users
+      summary: Cập nhật hồ sơ
+      description: Cập nhật thông tin hồ sơ người dùng
+      operationId: updateUserProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                avatarUrl:
+                  type: string
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/User'
+
+  /api/v1/users/settings:
+    get:
+      tags:
+        - Users
+      summary: Lấy cài đặt người dùng
+      description: Trả về cài đặt của người dùng
+      operationId: getUserSettings
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Cài đặt người dùng
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/UserSettings'
+
+    patch:
+      tags:
+        - Users
+      summary: Cập nhật cài đặt
+      description: Cập nhật cài đặt người dùng
+      operationId: updateUserSettings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserSettings'
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/UserSettings'
+
+  # Staff
+  /api/v1/staff/content:
+    get:
+      tags:
+        - Staff
+      summary: Lấy nội dung cần duyệt
+      description: Danh sách nội dung cho nhân viên quản lý
+      operationId: getContentForModeration
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, PENDING, PUBLISHED, REJECTED, ARCHIVED]
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            default: createdAt
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Danh sách nội dung
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DictionaryEntry'
+                      pagination:
+                        $ref: '#/components/schemas/PaginationMeta'
+        '403':
+          description: Không có quyền (yêu cầu STAFF hoặc ADMIN)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/staff/content/{id}:
+    get:
+      tags:
+        - Staff
+      summary: Lấy chi tiết nội dung
+      description: Chi tiết một nội dung cần duyệt
+      operationId: getContentById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Chi tiết nội dung
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      entry:
+                        $ref: '#/components/schemas/DictionaryEntry'
+
+    patch:
+      tags:
+        - Staff
+      summary: Cập nhật nội dung
+      description: Chỉnh sửa nội dung
+      operationId: updateContent
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                word:
+                  type: string
+                definition:
+                  type: string
+                videoUrl:
+                  type: string
+                thumbnailUrl:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      entry:
+                        $ref: '#/components/schemas/DictionaryEntry'
+
+  /api/v1/staff/content/{id}/approve:
+    post:
+      tags:
+        - Staff
+      summary: Phê duyệt nội dung
+      description: Phê duyệt nội dung để xuất bản
+      operationId: approveContent
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Phê duyệt thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      entry:
+                        $ref: '#/components/schemas/DictionaryEntry'
+                  message:
+                    type: string
+
+  /api/v1/staff/content/{id}/reject:
+    post:
+      tags:
+        - Staff
+      summary: Từ chối nội dung
+      description: Từ chối nội dung với lý do
+      operationId: rejectContent
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  example: "Định nghĩa chưa rõ ràng"
+      responses:
+        '200':
+          description: Từ chối thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      entry:
+                        $ref: '#/components/schemas/DictionaryEntry'
+                  message:
+                    type: string
+
+  /api/v1/staff/users:
+    get:
+      tags:
+        - Staff
+      summary: Lấy danh sách người dùng
+      description: Danh sách người dùng cho hỗ trợ
+      operationId: getStaffUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [USER, STAFF, ADMIN]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, SUSPENDED, DELETED]
+      responses:
+        '200':
+          description: Danh sách người dùng
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      users:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+                      pagination:
+                        $ref: '#/components/schemas/PaginationMeta'
+
+  /api/v1/staff/users/{id}:
+    get:
+      tags:
+        - Staff
+      summary: Lấy chi tiết người dùng
+      description: Chi tiết người dùng cho hỗ trợ
+      operationId: getStaffUserDetails
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Chi tiết người dùng
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+
+  /api/v1/staff/reports:
+    get:
+      tags:
+        - Staff
+      summary: Lấy báo cáo/vấn đề
+      description: Danh sách báo cáo từ người dùng
+      operationId: getReports
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Danh sách báo cáo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      reports:
+                        type: array
+                        items:
+                          type: object
+
+  /api/v1/staff/reports/{id}:
+    patch:
+      tags:
+        - Staff
+      summary: Cập nhật trạng thái báo cáo
+      description: Thay đổi trạng thái xử lý báo cáo
+      operationId: updateReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+
+  /api/v1/staff/stats:
+    get:
+      tags:
+        - Staff
+      summary: Lấy thống kê STAFF
+      description: Thống kê cho dashboard nhân viên
+      operationId: getStaffStats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Thống kê STAFF
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      content:
+                        type: object
+                        properties:
+                          pending:
+                            type: integer
+                          published:
+                            type: integer
+                      users:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+                          recentWeek:
+                            type: integer
+
+  # Admin
+  /api/v1/admin/users:
+    get:
+      tags:
+        - Admin
+      summary: Lấy tất cả người dùng (ADMIN)
+      description: Danh sách đầy đủ người dùng với lọc và phân trang
+      operationId: getAdminUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [USER, STAFF, ADMIN]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, SUSPENDED, DELETED]
+        - name: accountType
+          in: query
+          schema:
+            type: string
+            enum: [GUEST, PERMANENT]
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            default: createdAt
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Danh sách người dùng
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      users:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+                      pagination:
+                        $ref: '#/components/schemas/PaginationMeta'
+        '403':
+          description: Không có quyền (yêu cầu ADMIN)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/admin/users/{id}:
+    get:
+      tags:
+        - Admin
+      summary: Lấy chi tiết người dùng (ADMIN)
+      description: Thông tin chi tiết người dùng với thống kê
+      operationId: getAdminUserById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Chi tiết người dùng
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      stats:
+                        type: object
+                        properties:
+                          activeSessions:
+                            type: integer
+                          favorites:
+                            type: integer
+
+    patch:
+      tags:
+        - Admin
+      summary: Cập nhật người dùng (ADMIN)
+      description: Cập nhật thông tin, vai trò, trạng thái người dùng
+      operationId: updateAdminUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                role:
+                  type: string
+                  enum: [USER, STAFF, ADMIN]
+                status:
+                  type: string
+                  enum: [ACTIVE, INACTIVE, SUSPENDED, DELETED]
+                avatarUrl:
+                  type: string
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                  message:
+                    type: string
+
+    delete:
+      tags:
+        - Admin
+      summary: Xóa người dùng (ADMIN)
+      description: Xóa mềm tài khoản người dùng
+      operationId: deleteAdminUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Xóa thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                  message:
+                    type: string
+
+  /api/v1/admin/users/{id}/suspend:
+    post:
+      tags:
+        - Admin
+      summary: Đình chỉ người dùng (ADMIN)
+      description: Đình chỉ tài khoản người dùng với lý do
+      operationId: suspendUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  example: "Vi phạm quy tắc cộng đồng"
+      responses:
+        '200':
+          description: Đình chỉ thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                  message:
+                    type: string
+
+  /api/v1/admin/users/{id}/activate:
+    post:
+      tags:
+        - Admin
+      summary: Kích hoạt người dùng (ADMIN)
+      description: Kích hoạt lại tài khoản bị đình chỉ
+      operationId: activateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Kích hoạt thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                  message:
+                    type: string
+
+  /api/v1/admin/stats:
+    get:
+      tags:
+        - Admin
+      summary: Lấy thống kê hệ thống (ADMIN)
+      description: Thống kê tổng quan cho dashboard admin
+      operationId: getSystemStats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Thống kê hệ thống
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      users:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+                          active:
+                            type: integer
+                          suspended:
+                            type: integer
+                          newToday:
+                            type: integer
+                          newThisWeek:
+                            type: integer
+                      content:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+                          published:
+                            type: integer
+                          pending:
+                            type: integer
+                          draft:
+                            type: integer
+                      sessions:
+                        type: object
+                        properties:
+                          active:
+                            type: integer
+                          today:
+                            type: integer
+                      timestamp:
+                        type: string
+                        format: date-time
+
+  /api/v1/admin/content/pending:
+    get:
+      tags:
+        - Admin
+      summary: Lấy nội dung chờ duyệt (ADMIN)
+      description: Danh sách nội dung cần phê duyệt cuối cùng
+      operationId: getPendingContent
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Danh sách nội dung chờ duyệt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DictionaryEntry'
+                      pagination:
+                        $ref: '#/components/schemas/PaginationMeta'
+
+  /api/v1/admin/sessions:
+    get:
+      tags:
+        - Admin
+      summary: Lấy phiên đăng nhập đang hoạt động (ADMIN)
+      description: Danh sách tất cả phiên đăng nhập với phân trang
+      operationId: getActiveSessions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Danh sách phiên đăng nhập
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      sessions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            _id:
+                              type: string
+                            userId:
+                              type: string
+                            deviceInfo:
+                              type: string
+                            lastActivity:
+                              type: string
+                              format: date-time
+                            createdAt:
+                              type: string
+                              format: date-time
+                      pagination:
+                        $ref: '#/components/schemas/PaginationMeta'
+
+  /api/v1/admin/sessions/{sessionId}:
+    delete:
+      tags:
+        - Admin
+      summary: Hủy phiên đăng nhập (ADMIN)
+      description: Hủy một phiên đăng nhập cụ thể
+      operationId: terminateSession
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Phiên đăng nhập đã bị hủy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
