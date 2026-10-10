@@ -116,6 +116,49 @@ Bạn sẽ thấy giao diện Swagger UI với:
 
 ## 🔐 Xác thực bằng JWT
 
+## 🔐 Xác thực bằng JWT
+
+### Tài khoản Test có sẵn
+
+Bạn có thể tạo tài khoản test bằng lệnh:
+
+```powershell
+cd c:\Users\PC\sign_voice\backend
+npm run db:create-test-accounts
+```
+
+**Tài khoản được tạo:**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ USER Account (Basic user permissions)                  │
+├─────────────────────────────────────────────────────────┤
+│ Email:    user@test.com                                │
+│ Password: User123!                                      │
+│ Role:     USER                                          │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│ STAFF Account (Content moderation)                     │
+├─────────────────────────────────────────────────────────┤
+│ Email:    staff@test.com                               │
+│ Password: Staff123!                                     │
+│ Role:     STAFF                                         │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│ ADMIN Account (Full system access)                     │
+├─────────────────────────────────────────────────────────┤
+│ Email:    admin@signvoice.com                          │
+│ Password: Admin123!                                     │
+│ Role:     ADMIN                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+⚠️ **Lưu ý:** Đây là tài khoản TEST, chỉ dùng cho development!
+
+---
+
 ### Bước 1: Đăng ký tài khoản (hoặc đăng nhập)
 
 #### Đăng ký tài khoản mới:
@@ -160,12 +203,29 @@ Bạn sẽ thấy giao diện Swagger UI với:
 
 1. Click **POST /api/v1/auth/login**
 2. Click **"Try it out"**
-3. Nhập:
+3. Nhập (dùng tài khoản test hoặc tài khoản bạn đã tạo):
 
+**Ví dụ - đăng nhập USER:**
 ```json
 {
-  "email": "test@example.com",
-  "password": "Password123!"
+  "email": "user@test.com",
+  "password": "User123!"
+}
+```
+
+**Ví dụ - đăng nhập STAFF:**
+```json
+{
+  "email": "staff@test.com",
+  "password": "Staff123!"
+}
+```
+
+**Ví dụ - đăng nhập ADMIN:**
+```json
+{
+  "email": "admin@signvoice.com",
+  "password": "Admin123!"
 }
 ```
 
