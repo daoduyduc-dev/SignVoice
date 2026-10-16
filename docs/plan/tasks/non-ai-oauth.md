@@ -91,3 +91,7 @@ Commit code, contract/docs and tests on task/non-ai-oauth before reporting for i
 - Live provider login was NOT verified: user has not supplied credentials. Official Google
   docs retrieved; official Meta pages inaccessible/rate limited via research tool, linked in setup.
 - Test database guard cherry-picked from backend task (7e113b4 -> local 50bce7b).
+- Independent review follow-up: failed current-password proof is HTTP 400 validation, preserving
+  the valid bearer session. Real AuthProvider/AuthService/ApiClient controlled-HTTP regression
+  verifies identity, tokens, metadata and no refresh/invalidation until a successful retry;
+  backend route regression verifies the existing access session remains valid after rejection.

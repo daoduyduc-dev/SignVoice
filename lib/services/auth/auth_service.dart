@@ -36,12 +36,14 @@ class AuthService {
   }
 
   Future<void> startOAuth(String provider) async {
-    if (!kIsWeb)
+    if (!kIsWeb) {
       throw UnsupportedError(
         'OAuth hiện hỗ trợ trình duyệt web. Hãy dùng email trên ứng dụng.',
       );
-    if (!const ['google', 'facebook'].contains(provider))
+    }
+    if (!const ['google', 'facebook'].contains(provider)) {
       throw ArgumentError('Unknown OAuth provider');
+    }
     final url = Uri.base.resolve(
       '${ApiConfig.baseUrl}/auth/oauth/$provider/start',
     );

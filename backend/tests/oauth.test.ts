@@ -171,7 +171,10 @@ describe('OAuth identity verification and real session handoff', () => {
     const registered = await request(app).post('/api/v1/auth/register').send({ email, password, displayName: prefix }).expect(201);
     const { user, tokens } = registered.body.data; ids.push(user.id);
     const change = () => request(app).post('/api/v1/auth/change-password').set('Authorization', `Bearer ${tokens.accessToken}`);
-    await change().send({ currentPassword: 'wrong', newPassword: 'NewPassword123' }).expect(401);
+    const rejected = await change().send({ currentPassword: 'wrong', newPassword: 'NewPassword123' }).expect(400);
+    expect(rejected.body.error.code).toBe('VALIDATION_ERROR');
+    expect(rejected.headers['set-cookie']).toBeUndefined();
+    await request(app).get('/api/v1/auth/me').set('Authorization', `Bearer ${tokens.accessToken}`).expect(200);
     await change().send({ currentPassword: password, newPassword: 'weak' }).expect(400);
     await change().send({ currentPassword: password, newPassword: password }).expect(422);
     const response = await change().send({ currentPassword: password, newPassword: 'NewPassword123' }).expect(200);
