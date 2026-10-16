@@ -45,6 +45,51 @@ class AuthProvider extends ChangeNotifier {
       _state == AuthState.authenticated && _user != null;
   bool get isLoading => _state == AuthState.loading;
 
+  Future<Map<String, bool>> oauthProviders() => _authService.oauthProviders();
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      await _authService.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      _user = null;
+      _state = AuthState.unauthenticated;
+      _errorMessage = null;
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+    } catch (_) {
+      _errorMessage = 'Không đổi được mật khẩu. Vui lòng thử lại.';
+    }
+    notifyListeners();
+    return false;
+  }
+
+  Future<void> startOAuth(String provider) => _authService.startOAuth(provider);
+  Future<bool> completeOAuth() async {
+    _state = AuthState.loading;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      _user = await _authService.completeOAuth();
+      _state = AuthState.authenticated;
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+    } catch (_) {
+      _errorMessage = 'Không hoàn tất được đăng nhập. Vui lòng thử lại.';
+    }
+    _user = null;
+    _state = AuthState.unauthenticated;
+    notifyListeners();
+    return false;
+  }
+
   /// Initialize - check if user is already authenticated
   Future<void> initialize() async {
     try {

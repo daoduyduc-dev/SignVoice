@@ -29,7 +29,7 @@ info:
     ## Giới hạn
 
     - **AI Recognition**: Chưa được tích hợp - các tính năng AI sẽ hiển thị thông báo "Tính năng AI chưa được tích hợp"
-    - **OAuth**: Google/Facebook login chưa được cấu hình
+    - **OAuth**: Google/Facebook web authorization-code login; provider flags are disabled until server credentials/origins are configured. See docs/OAUTH_SETUP.md.
     - **Email**: Xác thực email chưa được kích hoạt
 
   contact:
@@ -721,6 +721,95 @@ components:
       minProperties: 1
 
 paths:
+  /api/v1/auth/oauth/providers:
+    get:
+      tags: [Authentication]
+      summary: Public provider availability only (no credentials)
+      responses:
+        '200':
+          description: Enabled flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    required: [google, facebook]
+                    additionalProperties: false
+                    properties:
+                      google: { type: boolean }
+                      facebook: { type: boolean }
+  /api/v1/auth/oauth/{provider}/start:
+    get:
+      tags: [Authentication]
+      summary: Begin browser authorization-code login with HttpOnly SameSite=Lax state cookie
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [google, facebook] }
+      responses:
+        '302': { description: Redirect to configured provider; Google includes nonce and PKCE S256 }
+        '404': { description: Unknown provider }
+        '429': { description: Too many requests }
+        '503': { description: OAUTH_DISABLED or OAUTH_CONFIGURATION_INVALID; email and guest unaffected }
+  /api/v1/auth/oauth/{provider}/callback:
+    get:
+      tags: [Authentication]
+      summary: Fixed Google/Facebook callback; atomically consume browser-bound state and verify identity server-side
+      description: >-
+        Concrete registered callbacks are /api/v1/auth/oauth/google/callback and
+        /api/v1/auth/oauth/facebook/callback. Creates normal persisted JWT sessions,
+        sets HttpOnly refresh cookie, and redirects only to configured frontend /#/oauth-complete.
+        Redirects carry no tokens, only an allowlisted error code on failure.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [google, facebook] }
+        - name: state
+          in: query
+          schema: { type: string }
+        - name: code
+          in: query
+          schema: { type: string }
+        - name: error
+          in: query
+          schema: { type: string }
+      responses:
+        '303': { description: Success or sanitized OAuth error to configured frontend }
+        '503': { description: Provider configuration unavailable }
+  /api/v1/auth/oauth/complete:
+    post:
+      tags: [Authentication]
+      summary: Bootstrap browser session from HttpOnly cookie after callback without prior local login metadata
+      description: Requires exact configured frontend Origin and CORS allowlist; rotates and consumes the refresh session. Response uses normal user and tokens DTO; browser stores access only in memory and metadata locally.
+      responses:
+        '200': { description: Standard authentication response containing user and tokens }
+        '401': { description: Missing, expired, revoked or replayed session }
+        '403': { description: Untrusted or missing Origin }
+  /api/v1/auth/change-password:
+    post:
+      tags: [Authentication]
+      security: [{ bearerAuth: [] }]
+      summary: Change local password and revoke all sessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        '200': { description: Password changed; cookie cleared; sign in again }
+        '400': { description: Weak password or guest/social account has no local password }
+        '401': { description: Wrong current password or unauthorized }
+        '422': { description: Unchanged new password }
   # System Health
   /health/live:
     get:

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
@@ -257,6 +258,57 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
+  Map<String, bool>? oauth;
+  String? oauthError;
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.register) loadOAuth();
+  }
+
+  Future<void> loadOAuth() async {
+    try {
+      final value = await context.read<AuthProvider>().oauthProviders();
+      if (mounted)
+        setState(() {
+          oauth = value;
+          oauthError = null;
+        });
+    } catch (_) {
+      if (mounted)
+        setState(
+          () => oauthError = 'Không tải được trạng thái Google/Facebook. Đăng nhập email vẫn khả dụng.',
+        );
+    }
+  }
+
+  Future<void> socialLogin(String provider) async {
+    if (!kIsWeb) {
+      toast(
+        context,
+        'OAuth hiện hỗ trợ trên web. Vui lòng đăng nhập email trong ứng dụng.',
+      );
+      return;
+    }
+    if (oauth?[provider] != true) {
+      toast(
+        context,
+        'Máy chủ chưa cấu hình OAuth cho $provider. Bạn vẫn có thể dùng email hoặc tài khoản khách.',
+      );
+      return;
+    }
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      await context.read<AuthProvider>().startOAuth(provider);
+    } catch (_) {
+      if (mounted)
+        toast(context, 'Không mở được trang đăng nhập. Vui lòng thử lại.');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   final form = GlobalKey<FormState>();
   final email = TextEditingController();
   final password = TextEditingController();
@@ -469,11 +521,31 @@ class _AuthScreenState extends State<AuthScreen> {
               'Tiếp tục với Google',
               outlined: true,
               icon: Icons.account_circle_outlined,
-              onPressed: () => toast(
-                context,
-                'Đăng nhập Google sẽ được kết nối ở phần backend.',
-              ),
+              onPressed: busy ? null : () => socialLogin('google'),
             ),
+            const SizedBox(height: 12),
+            AppButton(
+              'Tiếp tục với Facebook',
+              outlined: true,
+              icon: Icons.facebook,
+              onPressed: busy ? null : () => socialLogin('facebook'),
+            ),
+            const SizedBox(height: 10),
+            if (oauthError != null) ...[
+              Notice(oauthError!),
+              TextButton(
+                onPressed: loadOAuth,
+                child: const Text('Thử lại trạng thái OAuth'),
+              ),
+            ] else if (oauth != null &&
+                (oauth!['google'] != true || oauth!['facebook'] != true))
+              const Notice(
+                'Một số nhà cung cấp chưa được cấu hình. Đăng nhập email và dùng thử vẫn hoạt động.',
+              ),
+            if (!kIsWeb)
+              const Notice(
+                'Google/Facebook hiện hỗ trợ phiên bản web; ứng dụng dùng đăng nhập email.',
+              ),
             const SizedBox(height: 18),
             TextButton(
               onPressed: () => openScreen(context, 'S06'),

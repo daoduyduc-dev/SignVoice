@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as authController from '../controllers/auth.controller';
+import * as oauthController from '../controllers/oauth.controller';
 import { validate } from '../common/middlewares/validate.middleware';
 import { requireAuth } from '../common/middlewares/auth.middleware';
 import { rateLimit } from 'express-rate-limit';
@@ -10,9 +11,17 @@ import {
   convertGuestSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  changePasswordSchema,
 } from '../validation/auth.validation';
 
 const router = Router();
+const oauthLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60,
+  standardHeaders: 'draft-8', legacyHeaders: false, validate: { xForwardedForHeader: false },
+  message: { success: false, error: { code: 'TOO_MANY_REQUESTS', message: 'Vui lòng thử lại sau.' } } });
+router.get('/oauth/providers', oauthController.providers);
+router.get('/oauth/:provider/start', oauthLimiter, oauthController.start);
+router.get('/oauth/:provider/callback', oauthLimiter, oauthController.callback);
+router.post('/oauth/complete', oauthLimiter, oauthController.complete);
 
 const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -25,6 +34,7 @@ const passwordResetLimiter = rateLimit({
 });
 router.post('/forgot-password', passwordResetLimiter, validate(forgotPasswordSchema), authController.forgotPassword);
 router.post('/reset-password', passwordResetLimiter, validate(resetPasswordSchema), authController.resetPassword);
+router.post('/change-password', passwordResetLimiter, requireAuth, validate(changePasswordSchema), authController.changePassword);
 
 /**
  * @route POST /api/v1/auth/register

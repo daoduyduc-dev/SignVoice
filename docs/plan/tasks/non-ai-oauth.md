@@ -1,7 +1,7 @@
 ---
 id: non-ai-oauth
 scope: configurable Google/Facebook authentication
-status: in-progress
+status: implemented-awaiting-review
 depends-on: []
 ---
 
@@ -52,6 +52,8 @@ User model provider identity fields/indexes, OAuth state model, auth-related tes
 auth session helper refactors if necessary, package dependency manifests, OAuth OpenAPI sections.
 Own Flutter lib/features/auth, lib/services/auth, lib/providers/auth_provider.dart,
 lib/app.dart callback routing only, auth tests and docs/OAUTH_SETUP.md.
+Parent explicitly extended ownership to common/middlewares/requestLogger.ts OAuth redaction
+and /auth/change-password plus app.dart AppState.bindAccount lifecycle wiring.
 Do not modify AppState, profile/library/home screens, user/favorites/history API routes or
 UserSettings/Conversation models. Other tasks will own those boundaries.
 
@@ -69,3 +71,23 @@ only in this worktree; never change shared machine settings or real provider acc
 Document exact env variables, localhost and Conveyor examples, provider-console redirect URLs,
 test-user setup, missing-credential smoke tests and manual live verification instructions.
 Commit code, contract/docs and tests on task/non-ai-oauth before reporting for independent review.
+
+## Implementation evidence (2026-10-16)
+
+- Configurable provider code flow, Google official verifier/nonce/PKCE, Meta server exchange/
+  debug_token/user match/appsecret_proof, atomic Mongo browser-bound state and safe redirects.
+- Normal persisted JWT sessions and HttpOnly cookie completion bootstrap, email collision
+  rejection, subject unique indexes, suspended/deleted rejection, explicit provider flags/UI.
+- Flutter same-tab web OAuth/complete/error UI; native unsupported explanation; preserved
+  email/guest methods. Local password change verifies proof, increments passwordVersion and
+  revokes sessions. Exact environment/provider-console/manual instructions in OAUTH_SETUP.md.
+- Backend typecheck and OpenAPI validation/coverage passed (68/68 documented routes).
+- OAuth DB/HTTP suite 25 tests passed on isolated signvoice_test_oauth_v2_1; existing auth
+  (9), auth-security (15), password-reset (11) passed in regression run. Only added password
+  validation assertion initially mismatched existing 400 semantics, fixed and OAuth rerun passed.
+- Flutter OAuth bootstrap/cancellation/error tests: 4 passed. Focused auth analyzer initially
+  passed. Final app analyzer/route suite awaits sibling AppState.bindAccount implementation:
+  app.dart now calls the agreed signature for identity changes; do not omit that dependency.
+- Live provider login was NOT verified: user has not supplied credentials. Official Google
+  docs retrieved; official Meta pages inaccessible/rate limited via research tool, linked in setup.
+- Test database guard cherry-picked from backend task (7e113b4 -> local 50bce7b).
