@@ -5,6 +5,11 @@ All private ownership comes from the verified JWT, never from JSON input. Schema
 rejects unknown mutation fields, object/array query values, invalid IDs, invalid ranges and
 unescaped regular-expression input. Paged lists use bounded positive integers.
 
+Atomic multi-document changes use MongoDB transactions and require Atlas or a replica set.
+The documented local Docker setup must initialize a replica set, retain existing data and
+authentication, bind development access to loopback, and provide an authenticated readiness
+check. Never silently downgrade an atomic operation to partially applied independent writes.
+
 ## User
 
 - GET/PATCH `/users/profile`: flat safe User DTO in data, with `_id` (or existing `id`
