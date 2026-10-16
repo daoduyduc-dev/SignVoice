@@ -7,4 +7,5 @@ Older planning matrices describe earlier snapshots and are not current completio
 - [REST contract](../backend/docs/openapi.yaml)
 - [Authentication and management](ADMIN_MANAGEMENT.md)
 - [SMTP password reset](SMTP_PASSWORD_RESET.md)
+- [Google/Facebook OAuth configuration and tests](OAUTH_SETUP.md)
 - [Conveyor deployment](CONVEYOR_PUBLISHING.md)
