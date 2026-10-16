@@ -82,6 +82,7 @@ const signs = <SignEntry>[
 ];
 
 class AppState extends ChangeNotifier {
+  String? _accountId;
   bool guest = false;
   String name = 'Nguyễn Minh Tuấn';
   String email = 'minhtuan@email.com';
@@ -127,6 +128,25 @@ class AppState extends ChangeNotifier {
   }
 
   void enter({required bool asGuest, String? displayName, String? userEmail}) {
+    guest = asGuest;
+    if (displayName != null) name = displayName;
+    if (userEmail != null) email = userEmail;
+    notifyListeners();
+  }
+
+  void bindAccount(
+    String accountId, {
+    required bool asGuest,
+    String? displayName,
+    String? userEmail,
+  }) {
+    if (_accountId != accountId) {
+      history.clear();
+      favorites.clear();
+      sentence.clear();
+      selectedHistoryId = null;
+      _accountId = accountId;
+    }
     guest = asGuest;
     if (displayName != null) name = displayName;
     if (userEmail != null) email = userEmail;
