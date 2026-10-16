@@ -807,8 +807,8 @@ paths:
                 newPassword: { type: string, minLength: 8, maxLength: 128 }
       responses:
         '200': { description: Password changed; cookie cleared; sign in again }
-        '400': { description: Weak password or guest/social account has no local password }
-        '401': { description: Wrong current password or unauthorized }
+        '400': { description: Wrong current password, weak password, or guest/social account has no local password; valid session is preserved for retry }
+        '401': { description: Missing or invalid bearer session }
         '422': { description: Unchanged new password }
   # System Health
   /health/live:

@@ -558,7 +558,9 @@ export async function changePassword(userId: Types.ObjectId, currentPassword: st
   if (user.accountType !== AccountType.LOCAL || !user.passwordHash)
     throw new AppError('Chỉ tài khoản email có thể đổi mật khẩu tại đây.', 400, 'AUTH_PASSWORD_NOT_SUPPORTED');
   if (!await verifyPassword(user.passwordHash, currentPassword))
-    throw new AppError('Mật khẩu hiện tại không đúng.', 401, ErrorCodes.AUTH_INVALID_CREDENTIALS);
+    // The bearer session is still valid. Failed password proof is form validation,
+    // not an expired/invalid session: clients must preserve auth so users can retry.
+    throw new AppError('Mật khẩu hiện tại không đúng.', 400, ErrorCodes.VALIDATION_ERROR);
   if (currentPassword === newPassword) throw new AppError('Mật khẩu mới phải khác mật khẩu hiện tại.', 422, ErrorCodes.VALIDATION_ERROR);
   const passwordHash = await hashPassword(newPassword);
   const claimed = await User.findOneAndUpdate({ _id: user._id, passwordVersion: user.passwordVersion,

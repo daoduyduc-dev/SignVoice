@@ -269,16 +269,18 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> loadOAuth() async {
     try {
       final value = await context.read<AuthProvider>().oauthProviders();
-      if (mounted)
+      if (mounted) {
         setState(() {
           oauth = value;
           oauthError = null;
         });
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => oauthError = 'Không tải được trạng thái Google/Facebook. Đăng nhập email vẫn khả dụng.',
         );
+      }
     }
   }
 
@@ -302,8 +304,9 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       await context.read<AuthProvider>().startOAuth(provider);
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         toast(context, 'Không mở được trang đăng nhập. Vui lòng thử lại.');
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
