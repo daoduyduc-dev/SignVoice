@@ -30,6 +30,10 @@ unescaped regular-expression input. Paged lists use bounded positive integers.
   sessions, preserving existing reset-password security contract. OAuth task owns auth files;
   backend developer coordinates a follow-up instead of editing them concurrently.
 
+Incorrect current-password proof for a protected profile/account/password action is a 400
+validation failure, preserving the authenticated session and form input. Reserve 401 for
+invalid or expired access/session credentials; the client uses it to refresh or sign out.
+
 Guests can persist their own temporary data/preferences and retain it when converted using
 the existing convert-guest endpoint; the UI must not claim permanent registration replaced
 the guest account. Export/deletion operate only on owned guest data. No cross-account merging.
