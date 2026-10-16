@@ -55,6 +55,10 @@ POST requires an existing published entry in an active category; duplicate add i
 DELETE is idempotent. Counters must match actual favorites under repeated/bulk/account deletion.
 `/history` remains the current dictionary-view history, never conversation text.
 
+Category deletion and entry creation/reassignment must share transactional write conflicts:
+a category with referencing content cannot be deleted, including concurrent requests.
+All avatar/video/thumbnail/image URLs allow only HTTP or HTTPS, never executable schemes.
+
 ## Conversations
 
 Dedicated `/conversations` routes store user-entered text; no AI-generated content is created.
