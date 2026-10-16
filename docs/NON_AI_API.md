@@ -91,3 +91,7 @@ Edit forms must wait for the initial persisted resource before enabling Save. A 
 must never overwrite a dirty draft; failed saves keep the draft/dialog available for retry.
 All account-owned follow-up loads and dialogs (including session revocation) capture the
 account identity/epoch and discard results after an account change, even after a mutation.
+The HTTP/auth layer uses the same session boundary: a stale 401, refresh success/failure or
+profile refresh from an earlier session cannot clear/replace the current session or replay
+an earlier account's mutation with a new account's credentials. Destructive confirmations
+and logout also recheck the captured account epoch before dispatch.
