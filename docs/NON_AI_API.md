@@ -82,3 +82,8 @@ must exercise those routes. Per-account async loads carry an epoch/user guard so
 account switching cannot restore the previous account's data. Settings/profile mutations are
 applied after successful persistence; failures preserve input. Sync is real reload, not a timer.
 Selected detail without its original ID must show missing; never select another record silently.
+
+Edit forms must wait for the initial persisted resource before enabling Save. A late load
+must never overwrite a dirty draft; failed saves keep the draft/dialog available for retry.
+All account-owned follow-up loads and dialogs (including session revocation) capture the
+account identity/epoch and discard results after an account change, even after a mutation.
