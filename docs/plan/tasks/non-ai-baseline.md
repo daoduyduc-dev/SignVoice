@@ -1,7 +1,7 @@
 ---
 id: non-ai-baseline
 scope: repository baseline
-status: in-progress
+status: completed
 depends-on: []
 ---
 
@@ -45,3 +45,44 @@ git diff origin/main should show delivery docs only, no active AI additions. Pre
 android/build and backend/.env. Run the baseline analyzer/tests and document pre-existing
 failures rather than correcting application features in this task. Report the commit and
 backup location for orchestrator merge.
+
+## Completion evidence — 2026-10-16
+
+- Restored all 22 tracked AI modifications from origin/main `78efbe2`. Only delivery
+  documentation differs from that pushed baseline; no application feature was changed.
+- Recovery: `.runtime/non-ai-recovery-20261016-152545/` contains the binary tracked patch,
+  original tracked/addition copies under `files/`, moved AI additions under `moved/`, and
+  `manifest.json` with paths and restoration instructions. `git apply --check` accepts the
+  recovery patch. All moved addition files match their backup SHA-256 hashes.
+- Preserved `backend/.env` byte hash and the complete preexisting `android/build` file count.
+  Did not alter installed LM Studio, downloaded models, or other runtime environments.
+- The recorded Video AI PID 6232 did not exist and port 8000 had no listener at cleanup.
+  No process needed stopping. LM Studio was not closed.
+- `flutter pub get` passed and regenerated platform registrants using the pushed packages.
+  Search found no active LM Studio page/service/configuration, video backend references,
+  `image_picker` dependency, or associated imports in application/test/server source.
+
+### Baseline checks
+
+| Check | Result |
+| --- | --- |
+| Backend `npm test` | Passed: 53 tests in 7 files |
+| Backend `npm run typecheck` | Passed |
+| Backend `npm run docs:validate` | Passed: 48 OpenAPI paths |
+| Backend `npm run docs:coverage` | Passed: 63/63 routes documented |
+| Flutter `flutter test` | Passed: 75 tests |
+| Flutter `flutter analyze` | Preexisting failure: 42 findings (2 warnings, 40 info), no errors |
+
+Local logs are `.runtime/non-ai-baseline-{backend-tests,backend-typecheck,docs-validation,
+docs-coverage,flutter-tests,flutter-analyze}.log`. These are baseline regression checks,
+not evidence that incomplete product flows satisfy the broader completion contract.
+
+### Findings for subsequent implementation tasks
+
+The restored analyzer reports unnecessary null checks/assertions in
+`lib/screens/user/dictionary_detail_screen.dart:114-115`, an undeclared direct `intl`
+dependency in `lib/screens/user/history_screen.dart`, deprecated Radio group APIs in
+`lib/screens/user/dictionary_list_screen.dart` and `lib/screens/user/settings_screen.dart`,
+null-aware collection-style findings in service files, and a missing control-flow block in
+`test/admin_workspace_test.dart:411`. These existed in the pushed baseline and were
+intentionally left for the frontend delivery task rather than mixed into recovery cleanup.
