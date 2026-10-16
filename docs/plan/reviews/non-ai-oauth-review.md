@@ -1,10 +1,29 @@
 # Independent OAuth review
 
 Date: 2026-10-16. Reviewed implementation `e0081cf` with test isolation guard
-`50bce7b`, in `task/non-ai-oauth-review`. Verdict: **changes required** for R1.
-No product code was changed during review.
+`50bce7b`, followed by correction `0d47f89`, in `task/non-ai-oauth-review`.
+Verdict: **approved for the reviewed OAuth/auth scope; R1 closed**. Integrated app
+and live-provider boundaries below remain pending. No product code was changed during review.
 
-## R1 — incorrect current password logs out a valid user (P1)
+## R1 verification after correction
+
+Correction `0d47f89` now returns HTTP 400 VALIDATION_ERROR for an incorrect current
+password; this does not expire a valid bearer session. Independent rerun confirmed:
+
+- Backend OAuth **25/25 passed**, including failed proof400, no cookie change, `/me`200
+  with the original token, correct retry200 and revocation of old access/refresh credentials.
+- Flutter OAuth **5/5 passed**, including real AuthProvider/AuthService/ApiClient retaining
+  user/access/refresh/role after wrong proof, no refresh request/invalidation, then a
+  successful retry that signs out as required after the password change.
+- Focused analyzer for auth screens/provider/service and OAuth tests: **no issues found**.
+- Test database: `signvoice_test_oauth_review_fix_1`, securely derived without exposing
+  connection credentials. Initial fresh-database setup timed out at the default30-second
+  hook limit before tests ran; retry with60-second hook limit passed in10.30seconds.
+
+The historical reproduction below records the original finding and is no longer the
+expected behavior. Its corrected regression is committed in `test/oauth_test.dart`.
+
+## R1 original finding — incorrect current password logs out a valid user (P1, closed)
 
 `backend/src/services/auth.service.ts:560-561` responds with HTTP 401
 `AUTH_INVALID_CREDENTIALS` when password-change proof is wrong, despite a valid access
@@ -104,7 +123,7 @@ console policy or live compatibility is established by this review.
 
 ## Remaining acceptance boundaries
 
-- R1 must be fixed and independently rerun before approval.
+- R1 was fixed in `0d47f89` and independently rerun successfully as recorded above.
 - Full integrated Flutter analyzer/test/build, routed initial callback and account-bound
   state lifecycle await sibling FE integration; standalone mocks cannot establish these.
 - Real Google/Facebook consent, real browser cookie navigation and phone/Conveyor login
