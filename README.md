@@ -27,8 +27,8 @@ http://localhost:3000/api-docs/openapi.json
 ### Khởi động Backend với Swagger:
 
 ```powershell
-# 1. Khởi động MongoDB
-net start MongoDB
+# 1. Dùng MongoDB Atlas hoặc replica set local
+# Xem backend/docs/LOCAL_MONGODB.md trước khi khởi động database local.
 
 # 2. Khởi động Backend
 cd backend
@@ -40,12 +40,12 @@ npm run dev
 ```
 
 **Features:**
-- ✅ 47 API endpoints được document đầy đủ
+- ✅ API được mô tả trong OpenAPI hiện hành
 - ✅ JWT Bearer authentication
 - ✅ Interactive testing ("Try it out")
 - ✅ USER/STAFF/ADMIN role testing
 - ✅ OpenAPI 3.0.3 specification
-- ✅ 100% API coverage
+- Kiểm tra độ phủ tài liệu bằng `npm run docs:coverage` trong backend
 
 ---
 
@@ -59,7 +59,7 @@ Public bản web bằng Conveyor: [hướng dẫn chạy](docs/CONVEYOR_PUBLISHI
 
 ```powershell
 flutter pub get
-flutter run -d chrome
+flutter run -d chrome --web-port 8080 --dart-define=API_BASE_URL=http://localhost:3000/api/v1
 ```
 
 Để chạy trên Android hoặc nền tảng khác, dùng `flutter devices` rồi `flutter run -d <device-id>`.
@@ -86,7 +86,7 @@ trước mỗi API yêu cầu quyền. Đăng ký công khai luôn tạo tài kh
 Chạy web với cổng cố định trong danh sách CORS của backend:
 
 ```powershell
-flutter run -d chrome --web-port 8080
+flutter run -d chrome --web-port 8080 --dart-define=API_BASE_URL=http://localhost:3000/api/v1
 ```
 
 Đổi địa chỉ API khi chạy trên Android emulator:
@@ -105,13 +105,18 @@ Các phiên từ phiên bản JWT cũ cần đăng nhập lại.
 
 - Splash tự chuyển đến onboarding → đăng nhập/đăng ký/dùng thử.
 - Kiểm tra email, mật khẩu, mật khẩu xác nhận; hiện/ẩn mật khẩu; đồng ý điều khoản.
-- Trang chủ → xin quyền camera demo → kết quả thành công/thất bại → thêm từ → tạo câu → phát demo → lưu lịch sử.
-- Trang chủ → xin quyền microphone demo → nghe demo → dừng → sửa/sao chép văn bản → văn bản toàn màn hình → lưu lịch sử.
+- Nhận diện ký hiệu và giọng nói hiển thị chưa tích hợp AI; không tạo hoặc lưu kết quả giả.
+- Văn bản tự nhập có thể sửa, sao chép và lưu hội thoại trên backend.
 - Lịch sử: tìm kiếm, lọc nguồn/yêu thích, chọn đúng bản ghi, yêu thích, sao chép, xóa có xác nhận.
-- Từ điển: 10 mục mẫu từ source, tìm kiếm, lọc danh mục, chi tiết đúng ký hiệu, yêu thích.
+- Từ điển: nội dung đã xuất bản từ backend, tìm kiếm, phân trang, lọc danh mục, tải lại chi tiết và yêu thích đã lưu.
 - Cá nhân: sửa tên/email/màu avatar; tốc độ/cao độ; chế độ tự mở trình phát; sáng/tối/hệ thống; cỡ chữ toàn app; tương phản cao.
-- Đồng bộ demo và quyền riêng tư: xác nhận xóa có tác dụng lên dữ liệu phiên.
+- Đồng bộ tải lại dữ liệu thật; quyền riêng tư hỗ trợ xuất JSON, xóa dữ liệu, quản lý phiên và xóa tài khoản có xác nhận.
 - 6 trạng thái hệ thống, có thể mở riêng để kiểm tra.
+
+Google/Facebook dùng OAuth web với cấu hình server qua biến môi trường. Xem
+[hướng dẫn cấu hình và kiểm thử](docs/OAUTH_SETUP.md). Chưa có credentials thì các
+phương thức email và khách vẫn hoạt động. Đăng nhập thật với nhà cung cấp cần bạn
+đăng ký ứng dụng và callback; các kiểm thử mô phỏng không thay thế bước đó.
 
 Trên Chrome màn hình rộng, app hiển thị trong khung điện thoại. Trên điện thoại, app dùng toàn bộ màn hình. Nội dung dài có thể cuộn.
 
