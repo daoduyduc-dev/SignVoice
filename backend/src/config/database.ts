@@ -6,6 +6,9 @@ import { env } from './env';
  */
 export async function connectDatabase(): Promise<void> {
   try {
+    if (process.env.NODE_ENV === 'test' && !/^signvoice_test_[a-z0-9_]+$/i.test(new URL(env.MONGODB_URI).pathname.slice(1))) {
+      throw new Error('Refusing to connect tests to a non-test database');
+    }
     await mongoose.connect(env.MONGODB_URI, {
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,

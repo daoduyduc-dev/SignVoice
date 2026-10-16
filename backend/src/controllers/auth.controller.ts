@@ -24,13 +24,22 @@ export async function resetPassword(req: Request, res: Response, next: NextFunct
 
 const refreshCookie = 'signvoice_refresh';
 const cookieOptions: CookieOptions = {
-  httpOnly: true, secure: env.isProduction, sameSite: 'strict', path: '/api/v1/auth',
+  httpOnly: true, secure: env.isProduction || env.OAUTH_BACKEND_ORIGIN.startsWith('https://') || env.PUBLIC_ORIGIN.startsWith('https://'), sameSite: 'strict', path: '/api/v1/auth',
 };
 
-function setRefreshCookie(res: Response, tokens: ITokenPair): void {
+export function setRefreshCookie(res: Response, tokens: ITokenPair, secure = cookieOptions.secure): void {
   res.cookie(refreshCookie, tokens.refreshToken, {
-    ...cookieOptions, expires: tokens.refreshTokenExpiresAt,
+    ...cookieOptions, secure, expires: tokens.refreshTokenExpiresAt,
   });
+}
+
+export async function changePassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!req.user) throw new AppError('Authentication required', 401, ErrorCodes.AUTH_REQUIRED);
+    await authService.changePassword(req.user.id, req.body.currentPassword, req.body.newPassword);
+    res.clearCookie(refreshCookie, cookieOptions);
+    res.json({ success: true, data: { message: 'Đã đổi mật khẩu. Vui lòng đăng nhập lại trên các thiết bị.' } });
+  } catch (error) { next(error); }
 }
 
 /**

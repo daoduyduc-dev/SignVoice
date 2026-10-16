@@ -13,6 +13,7 @@ import 'core/app_state.dart';
 import 'core/theme.dart';
 import 'core/navigation.dart';
 import 'features/auth/auth_screens.dart';
+import 'features/auth/oauth_complete_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/recognition/recognition_screens.dart';
 import 'features/speech/speech_screens.dart';
@@ -47,20 +48,31 @@ class _SignVoiceAppState extends State<SignVoiceApp> {
   void initState() {
     super.initState();
     auth.addListener(_syncUser);
-    if (auth.state == AuthState.initial) auth.initialize();
+    final callback =
+        Uri.base.path == '/oauth-complete' ||
+        Uri.base.fragment.split('?').first == '/oauth-complete';
+    if (auth.state == AuthState.initial && !callback) auth.initialize();
     _syncUser();
   }
 
   void _syncUser() {
     final user = auth.user;
     if (auth.isAuthenticated && user != null) {
-      if (_currentUserId != user.id) state.clearLocalData();
-      _currentUserId = user.id;
-      state.enter(
-        asGuest: user.isGuest,
-        displayName: user.displayName,
-        userEmail: user.email ?? '',
-      );
+      if (_currentUserId != user.id) {
+        _currentUserId = user.id;
+        state.bindAccount(
+          user.id,
+          asGuest: user.isGuest,
+          displayName: user.displayName,
+          userEmail: user.email ?? '',
+        );
+      } else {
+        state.enter(
+          asGuest: user.isGuest,
+          displayName: user.displayName,
+          userEmail: user.email ?? '',
+        );
+      }
     } else if (auth.state == AuthState.unauthenticated) {
       _currentUserId = null;
       state.clearLocalData();
@@ -101,6 +113,15 @@ class _SignVoiceAppState extends State<SignVoiceApp> {
           themeMode: state.themeMode,
           onGenerateInitialRoutes: (initialRoute) {
             final uri = Uri.tryParse(initialRoute);
+            if (uri?.path == '/oauth-complete') {
+              return [
+                MaterialPageRoute<void>(
+                  settings: RouteSettings(name: initialRoute),
+                  builder: (_) =>
+                      OAuthCompleteScreen(error: uri!.queryParameters['error']),
+                ),
+              ];
+            }
             // Build the reset page alone: a background splash timer must not
             // redirect the user away from the link opened from their email.
             if (uri?.path == '/reset-password') {
@@ -140,6 +161,13 @@ class _SignVoiceAppState extends State<SignVoiceApp> {
           },
           onGenerateRoute: (settings) {
             final uri = Uri.tryParse(settings.name ?? '');
+            if (uri?.path == '/oauth-complete') {
+              return MaterialPageRoute<void>(
+                settings: settings,
+                builder: (_) =>
+                    OAuthCompleteScreen(error: uri!.queryParameters['error']),
+              );
+            }
             if (uri?.path == '/reset-password') {
               return MaterialPageRoute<void>(
                 settings: settings,

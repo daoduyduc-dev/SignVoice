@@ -46,9 +46,6 @@ export interface IOAuthProvider {
   email?: string;
   displayName?: string;
   photoUrl?: string;
-  accessToken?: string; // Encrypted, for refresh
-  refreshToken?: string; // Encrypted
-  tokenExpiresAt?: Date;
 }
 
 /**
@@ -102,8 +99,7 @@ const UserSchema = new Schema<IUser>(
       type: String,
       lowercase: true,
       trim: true,
-      // Unique sparse index - allows multiple nulls (for guests)
-      sparse: true,
+      // The unique sparse index is declared once below (no implicit nonunique index).
       validate: {
         validator: function(v: string) {
           if (!v) return true; // Allow empty for guests
@@ -148,9 +144,6 @@ const UserSchema = new Schema<IUser>(
       email: String,
       displayName: String,
       photoUrl: String,
-      accessToken: String, // Should be encrypted
-      refreshToken: String, // Should be encrypted
-      tokenExpiresAt: Date,
     },
     
     facebookProvider: {
@@ -158,9 +151,6 @@ const UserSchema = new Schema<IUser>(
       email: String,
       displayName: String,
       photoUrl: String,
-      accessToken: String, // Should be encrypted
-      refreshToken: String, // Should be encrypted
-      tokenExpiresAt: Date,
     },
     
     role: {
@@ -214,8 +204,8 @@ UserSchema.index({ email: 1 }, { unique: true, sparse: true });
 UserSchema.index({ passwordResetTokenHash: 1 }, { sparse: true });
 
 // OAuth provider IDs
-UserSchema.index({ 'googleProvider.providerId': 1 }, { sparse: true });
-UserSchema.index({ 'facebookProvider.providerId': 1 }, { sparse: true });
+UserSchema.index({ 'googleProvider.providerId': 1 }, { name: 'oauth_google_subject_unique', unique: true, sparse: true });
+UserSchema.index({ 'facebookProvider.providerId': 1 }, { name: 'oauth_facebook_subject_unique', unique: true, sparse: true });
 
 // Query optimization
 UserSchema.index({ accountType: 1, status: 1 });

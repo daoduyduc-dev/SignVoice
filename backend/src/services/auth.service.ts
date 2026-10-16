@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import { User, AccountType, AccountStatus, UserRole } from '../models/User.model';
+import { User, IUser, AccountType, AccountStatus, UserRole } from '../models/User.model';
 import { AuthSession, SessionType, SessionStatus } from '../models/AuthSession.model';
 import { UserSettings } from '../models/UserSettings.model';
 import { AuditLog, AuditAction, AuditSeverity } from '../models/AuditLog.model';
@@ -505,7 +505,7 @@ export async function logoutAllDevices(
 /**
  * Helper: Create auth session
  */
-async function createAuthSession(
+export async function createAuthSession(
   userId: Types.ObjectId,
   token: string,
   expiresAt: Date,
@@ -533,4 +533,39 @@ async function createAuthSession(
     expiresAt,
     lastUsedAt: new Date(),
   });
+}
+
+/** Issue OAuth sessions through the same persisted token/session model as password login. */
+export async function loginOAuthUser(user: IUser, meta: IRequestMeta = {}): Promise<IAuthResponse> {
+  if (!user.isActive()) throw new AppError('Account is suspended or deleted', 403, ErrorCodes.USER_DISABLED);
+  await UserSettings.updateOne({ userId: user._id }, { $setOnInsert: { userId: user._id } }, { upsert: true });
+  user.lastLoginAt = new Date();
+  user.lastLoginIp = meta.ipAddress;
+  await user.save();
+  const tokens = generateTokenPair(user._id, user.role);
+  await createAuthSession(user._id, tokens.accessToken, tokens.accessTokenExpiresAt, meta, user.passwordVersion);
+  await createAuthSession(user._id, tokens.refreshToken, tokens.refreshTokenExpiresAt, meta, user.passwordVersion);
+  await AuditLog.log({ userId: user._id, actorRole: user.role, action: AuditAction.USER_LOGIN,
+    severity: AuditSeverity.INFO, ipAddress: meta.ipAddress, userAgent: meta.userAgent });
+  return { user: { id: user._id.toString(), email: user.email, displayName: user.displayName,
+    avatarUrl: user.avatarUrl, isGuest: user.isGuest, accountType: user.accountType,
+    status: user.status, createdAt: user.createdAt, updatedAt: user.updatedAt, ...await authorizationFor(user) }, tokens };
+}
+
+export async function changePassword(userId: Types.ObjectId, currentPassword: string, newPassword: string): Promise<void> {
+  const user = await User.findById(userId).select('+passwordHash');
+  if (!user || !user.isActive()) throw new AppError('Account unavailable', 403, ErrorCodes.USER_DISABLED);
+  if (user.accountType !== AccountType.LOCAL || !user.passwordHash)
+    throw new AppError('Chỉ tài khoản email có thể đổi mật khẩu tại đây.', 400, 'AUTH_PASSWORD_NOT_SUPPORTED');
+  if (!await verifyPassword(user.passwordHash, currentPassword))
+    // The bearer session is still valid. Failed password proof is form validation,
+    // not an expired/invalid session: clients must preserve auth so users can retry.
+    throw new AppError('Mật khẩu hiện tại không đúng.', 400, ErrorCodes.VALIDATION_ERROR);
+  if (currentPassword === newPassword) throw new AppError('Mật khẩu mới phải khác mật khẩu hiện tại.', 422, ErrorCodes.VALIDATION_ERROR);
+  const passwordHash = await hashPassword(newPassword);
+  const claimed = await User.findOneAndUpdate({ _id: user._id, passwordVersion: user.passwordVersion,
+    status: AccountStatus.ACTIVE }, { $set: { passwordHash }, $inc: { passwordVersion: 1 },
+    $unset: { passwordResetTokenHash: 1, passwordResetExpiresAt: 1, passwordResetRequestedAt: 1 } });
+  if (!claimed) throw new AppError('Tài khoản vừa thay đổi. Vui lòng đăng nhập lại.', 409, 'AUTH_SESSION_INVALID');
+  await AuthSession.revokeAllForUser(user._id);
 }

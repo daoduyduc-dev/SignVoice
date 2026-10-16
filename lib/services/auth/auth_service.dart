@@ -6,6 +6,7 @@ import '../storage/token_store.dart';
 import '../api/api_exception.dart';
 
 import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Authentication service
 class AuthService {
@@ -18,6 +19,58 @@ class AuthService {
       _tokenStorage = tokenStorage ?? SecureTokenStorage.instance;
 
   ValueListenable<int> get sessionInvalidated => _apiClient.sessionInvalidated;
+
+  Future<Map<String, bool>> oauthProviders() async {
+    final response = await _apiClient.get(
+      '/auth/oauth/providers',
+      requiresAuth: false,
+    );
+    final data = response['data'];
+    if (data is! Map || data['google'] is! bool || data['facebook'] is! bool) {
+      throw const FormatException('Invalid OAuth provider response');
+    }
+    return {
+      'google': data['google'] as bool,
+      'facebook': data['facebook'] as bool,
+    };
+  }
+
+  Future<void> startOAuth(String provider) async {
+    if (!kIsWeb) {
+      throw UnsupportedError(
+        'OAuth hiện hỗ trợ trình duyệt web. Hãy dùng email trên ứng dụng.',
+      );
+    }
+    if (!const ['google', 'facebook'].contains(provider)) {
+      throw ArgumentError('Unknown OAuth provider');
+    }
+    final url = Uri.base.resolve(
+      '${ApiConfig.baseUrl}/auth/oauth/$provider/start',
+    );
+    if (!await launchUrl(url, webOnlyWindowName: '_self')) {
+      throw StateError('Không mở được trang đăng nhập.');
+    }
+  }
+
+  Future<UserModel> completeOAuth() async {
+    final response = await _apiClient.post(
+      '/auth/oauth/complete',
+      requiresAuth: false,
+    );
+    return _saveAuthResponse(response);
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _apiClient.post(
+      '/auth/change-password',
+      body: {'currentPassword': currentPassword, 'newPassword': newPassword},
+    );
+    await _tokenStorage.clearAll();
+    _apiClient.sessionInvalidated.value++;
+  }
 
   Future<UserModel?> restoreSession() async {
     if (!await _tokenStorage.isAuthenticated()) {

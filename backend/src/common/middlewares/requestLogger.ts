@@ -19,7 +19,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
       requestId: req.id,
       ip: req.ip,
       userAgent: req.get('user-agent'),
-      query: req.query,
+      query: req.path.includes('/auth/oauth/') ? '[OAuth query redacted]' : sanitizeBody(req.query),
       body: sanitizeBody(req.body),
     });
   } else {
@@ -48,7 +48,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
 function sanitizeBody(body: any): any {
   if (!body || typeof body !== 'object') return body;
 
-  const sensitiveFields = ['password', 'newPassword', 'currentPassword', 'passwordHash', 'token', 'refreshToken', 'secret'];
+  const sensitiveFields = ['password', 'newPassword', 'currentPassword', 'passwordHash', 'token', 'refreshToken', 'secret', 'code', 'state', 'client_secret', 'access_token', 'id_token', 'input_token', 'code_verifier'];
   const sanitized = { ...body };
 
   for (const field of sensitiveFields) {
